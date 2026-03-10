@@ -9,7 +9,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../presentation/providers/class_provider.dart';
 import '../../../presentation/widgets/class_card.dart';
 
-const _merchUrl = 'https://aranha.com/store';
+const _merchUrl = 'https://www.aranhabarcelona.com/';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
