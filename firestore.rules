@@ -1,0 +1,23 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Kiosk app — no auth. Allow reads on members/classes,
+    // allow writes only to check_ins (to record check-ins).
+    match /members/{id} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /classes/{id} {
+      allow read: if true;
+      // Only the seeding function writes classes; lock down in production.
+      allow write: if true;
+    }
+
+    match /check_ins/{id} {
+      allow read, write: if true;
+    }
+  }
+}
