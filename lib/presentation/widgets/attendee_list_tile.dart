@@ -6,39 +6,49 @@ import '../../core/theme/app_colors.dart';
 import '../../data/models/check_in.dart';
 
 class AttendeeListTile extends StatelessWidget {
-  const AttendeeListTile({super.key, required this.checkIn});
+  const AttendeeListTile({
+    super.key,
+    required this.checkIn,
+    this.onTap,
+  });
 
   final CheckIn checkIn;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final timeFmt = DateFormat('HH:mm');
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.divider)),
-      ),
-      child: Row(
-        children: [
-          _Avatar(checkIn: checkIn),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(checkIn.memberName, style: theme.textTheme.titleMedium),
-                const SizedBox(height: 2),
-                Text(
-                  'Checked in at ${timeFmt.format(checkIn.checkedInAt)}',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ],
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppColors.divider)),
+        ),
+        child: Row(
+          children: [
+            _Avatar(checkIn: checkIn),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(checkIn.memberName, style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Checked in at ${timeFmt.format(checkIn.checkedInAt)}',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ],
+              ),
             ),
-          ),
-          _StatusBadge(status: checkIn.status),
-        ],
+            _StatusBadge(status: checkIn.status),
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+          ],
+        ),
       ),
     );
   }

@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -5,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../data/models/check_in.dart';
 import '../../../data/models/fitness_class.dart';
 import '../../../presentation/providers/checkin_provider.dart';
 import '../../../presentation/providers/class_provider.dart';
@@ -222,7 +224,222 @@ class _AttendeesList extends StatelessWidget {
 
     return SliverList.builder(
       itemCount: checkIns.length,
-      itemBuilder: (_, i) => AttendeeListTile(checkIn: checkIns[i]),
+      itemBuilder: (ctx, i) => AttendeeListTile(
+        checkIn: checkIns[i],
+        onTap: () => _showAttendeeSheet(ctx, checkIns[i]),
+      ),
+    );
+  }
+
+  void _showAttendeeSheet(BuildContext context, CheckIn checkIn) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _AttendeeSheet(
+        checkIn: checkIn,
+        onRemove: () async {
+          Navigator.of(context).pop();
+          try {
+            await context.read<ClassProvider>().removeCheckIn(
+                  checkInId: checkIn.id,
+                  classId: checkIn.classId,
+                );
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Failed to remove: $e')),
+              );
+            }
+          }
+        },
+      ),
+    );
+  }
+}
+
+class _AttendeeSheet extends StatelessWidget {
+  const _AttendeeSheet({required this.checkIn, required this.onRemove});
+
+  final CheckIn checkIn;
+  final VoidCallback onRemove;
+
+  static const double _avatarSize = 72;
+  static const _palette = [
+    Color(0xFFE87D3E),
+    Color(0xFF30A046),
+    Color(0xFF0066CC),
+    Color(0xFFD70015),
+    Color(0xFF4B44C8),
+  ];
+
+  Color get _avatarColor =>
+      _palette[checkIn.memberId.hashCode.abs() % _palette.length];
+
+  String get _initials {
+    final parts = checkIn.memberName.trim().split(' ');
+    if (parts.length >= 2) {
+      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    }
+    return checkIn.memberName.isNotEmpty
+        ? checkIn.memberName[0].toUpperCase()
+        : '?';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final timeFmt = DateFormat('HH:mm');
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Drag handle
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.only(bottom: 24),
+            decoration: BoxDecoration(
+              color: AppColors.divider,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Avatar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(_avatarSize / 2),
+            child: checkIn.memberProfilePicture != null
+                ? CachedNetworkImage(
+                    imageUrl: checkIn.memberProfilePicture!,
+                    width: _avatarSize,
+                    height: _avatarSize,
+                    fit: BoxFit.cover,
+                    errorWidget: (_, __, ___) => _fallbackAvatar(),
+                  )
+                : _fallbackAvatar(),
+          ),
+          const SizedBox(height: 16),
+          // Name
+          Text(checkIn.memberName, style: theme.textTheme.headlineMedium),
+          const SizedBox(height: 6),
+          // Check-in time
+          Text(
+            'Checked in at ${timeFmt.format(checkIn.checkedInAt)}',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 8),
+          // Status badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: (checkIn.status == CheckInStatus.confirmed
+                      ? AppColors.success
+                      : AppColors.warning)
+                  .withAlpha(30),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              checkIn.status.label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: checkIn.status == CheckInStatus.confirmed
+                    ? AppColors.success
+                    : AppColors.warning,
+              ),
+            ),
+          ),
+          const SizedBox(height: 32),
+          // Remove button
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: OutlinedButton.icon(
+              onPressed: () => _confirmRemove(context),
+              icon: const Icon(Icons.remove_circle_outline_rounded,
+                  color: AppColors.error),
+              label: const Text(
+                'Remove from class',
+                style: TextStyle(
+                  color: AppColors.error,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: AppColors.error),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Cancel button
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _fallbackAvatar() => Container(
+        width: _avatarSize,
+        height: _avatarSize,
+        color: _avatarColor,
+        alignment: Alignment.center,
+        child: Text(
+          _initials,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: _avatarSize * 0.36,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+
+  void _confirmRemove(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Remove attendee?'),
+        content: Text(
+          '${checkIn.memberName} will be removed from this class.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogCtx).pop();
+              onRemove();
+            },
+            child: const Text(
+              'Remove',
+              style: TextStyle(color: AppColors.error),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

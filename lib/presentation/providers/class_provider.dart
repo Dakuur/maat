@@ -79,6 +79,13 @@ class ClassProvider extends ChangeNotifier {
     );
   }
 
+  Future<void> removeCheckIn({
+    required String checkInId,
+    required String classId,
+  }) async {
+    await _service.removeCheckIn(checkInId: checkInId, classId: classId);
+  }
+
   void stopWatchingCheckIns() {
     _checkInsSub?.cancel();
     _checkInsSub = null;

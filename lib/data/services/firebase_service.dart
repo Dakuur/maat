@@ -144,6 +144,22 @@ class FirebaseService {
     return snap.docs.isNotEmpty;
   }
 
+  /// Removes a check-in and atomically decrements the class attendee count.
+  Future<void> removeCheckIn({
+    required String checkInId,
+    required String classId,
+  }) async {
+    final checkInRef = _checkIns.doc(checkInId);
+    final classRef = _classes.doc(classId);
+
+    await _db.runTransaction((tx) async {
+      tx.delete(checkInRef);
+      tx.update(classRef, {
+        'attendeeCount': FieldValue.increment(-1),
+      });
+    });
+  }
+
   /// Records a check-in and atomically increments the class attendee count.
   /// Throws if the member is already checked in.
   Future<void> checkInMember({
