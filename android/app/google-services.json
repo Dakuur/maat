@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "21896097619",
+    "project_id": "maat-f5d20",
+    "storage_bucket": "maat-f5d20.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:21896097619:android:e7b9b6f7be5e84d588bba6",
+        "android_client_info": {
+          "package_name": "com.maat.maat_kiosk"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBBSiIyl61huSRNlqEMTkpxMbpWMES1gPY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
