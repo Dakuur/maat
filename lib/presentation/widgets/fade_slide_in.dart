@@ -12,7 +12,7 @@ class FadeSlideIn extends StatefulWidget {
     super.key,
     required this.child,
     this.index = 0,
-    this.staggerMs = 55,
+    this.staggerMs = 30,
   });
 
   /// The widget to animate in.
@@ -39,22 +39,24 @@ class _FadeSlideInState extends State<FadeSlideIn>
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 420),
+      duration: const Duration(milliseconds: 240),
     );
 
-    // Opacity: linear ease-out keeps it crisp, not floaty.
+    // Opacity: easeOut feels instant at 144 fps.
     _opacity = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
 
-    // Slide: 7% of its own height upward → rests at 0.
-    // fastEaseInToSlowEaseOut gives a natural deceleration feel.
+    // Slide: 4% upward → minimal displacement, avoids content feeling far away.
     _slide = Tween(
-      begin: const Offset(0, 0.07),
+      begin: const Offset(0, 0.04),
       end: Offset.zero,
     ).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.fastEaseInToSlowEaseOut),
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic),
     );
 
-    final delay = Duration(milliseconds: widget.index * widget.staggerMs);
+    // Cap stagger at the 5th item so items deeper in the list appear immediately
+    // when the user scrolls — no visible empty gaps.
+    final cappedIndex = widget.index.clamp(0, 5);
+    final delay = Duration(milliseconds: cappedIndex * widget.staggerMs);
     if (delay == Duration.zero) {
       _ctrl.forward();
     } else {

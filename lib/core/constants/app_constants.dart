@@ -1,6 +1,6 @@
 abstract final class AppConstants {
   // ── Timing ────────────────────────────────────────────────────────────────
-  static const Duration successRedirectDelay = Duration(seconds: 10);
+  static const Duration successRedirectDelay = Duration(seconds: 5);
 
   // ── Layout ────────────────────────────────────────────────────────────────
   static const double pagePadding = 24.0;

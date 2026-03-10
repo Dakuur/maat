@@ -1,6 +1,6 @@
-import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_colors.dart';
 import '../../data/models/fitness_class.dart';
 import '../../data/models/member.dart';
 import '../../presentation/screens/checkin_confirm/checkin_confirm_screen.dart';
@@ -11,10 +11,9 @@ import '../../presentation/screens/success/success_screen.dart';
 
 /// Central routing configuration.
 ///
-/// All transitions use [SharedAxisTransition] (horizontal axis) from the
-/// Material Motion spec. This gives a polished shared-element feel — the
-/// outgoing screen slides left while fading out as the incoming one slides
-/// in from the right — and runs at the device's native refresh rate.
+/// All standard transitions use a cross-fade over a guaranteed white background
+/// to eliminate the black flash that appears when [fillColor] is transparent.
+/// The success screen uses a subtle scale + fade to feel celebratory.
 abstract final class AppRouter {
   static const String home = '/';
   static const String classDetail = '/class-detail';
@@ -25,19 +24,19 @@ abstract final class AppRouter {
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
       case home:
-        return _sharedAxis(const HomeScreen(), settings);
+        return _fadeRoute(const HomeScreen(), settings);
 
       case classDetail:
         final fc = settings.arguments as FitnessClass;
-        return _sharedAxis(ClassDetailScreen(fitnessClass: fc), settings);
+        return _fadeRoute(ClassDetailScreen(fitnessClass: fc), settings);
 
       case memberSearch:
         final fc = settings.arguments as FitnessClass;
-        return _sharedAxis(MemberSearchScreen(fitnessClass: fc), settings);
+        return _fadeRoute(MemberSearchScreen(fitnessClass: fc), settings);
 
       case checkinConfirm:
         final args = settings.arguments as Map<String, dynamic>;
-        return _sharedAxis(
+        return _fadeRoute(
           CheckInConfirmScreen(
             member: args['member'] as Member,
             fitnessClass: args['fitnessClass'] as FitnessClass,
@@ -47,45 +46,69 @@ abstract final class AppRouter {
 
       case success:
         final args = settings.arguments as Map<String, dynamic>;
-        // Use a vertical scale transition for the success screen to feel
-        // celebratory and distinct from normal forward navigation.
-        return _sharedAxis(
+        return _scaleRoute(
           SuccessScreen(
             member: args['member'] as Member,
             fitnessClass: args['fitnessClass'] as FitnessClass,
           ),
           settings,
-          type: SharedAxisTransitionType.scaled,
         );
 
       default:
-        return _sharedAxis(const HomeScreen(), settings);
+        return _fadeRoute(const HomeScreen(), settings);
     }
   }
 
-  /// Builds a [SharedAxisTransition] page route.
-  ///
-  /// [type] defaults to [SharedAxisTransitionType.horizontal] for the standard
-  /// forward/back navigation feel. Use [SharedAxisTransitionType.scaled] for
-  /// modal or confirmation destinations.
-  static PageRouteBuilder<T> _sharedAxis<T>(
+  /// Cross-fade with a solid white backing — no black flash.
+  static PageRouteBuilder<T> _fadeRoute<T>(
     Widget page,
-    RouteSettings settings, {
-    SharedAxisTransitionType type = SharedAxisTransitionType.horizontal,
-  }) {
+    RouteSettings settings,
+  ) {
     return PageRouteBuilder<T>(
       settings: settings,
-      transitionDuration: const Duration(milliseconds: 300),
-      reverseTransitionDuration: const Duration(milliseconds: 250),
-      pageBuilder: (_, __, ___) => page,
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        return SharedAxisTransition(
-          animation: animation,
-          secondaryAnimation: secondaryAnimation,
-          transitionType: type,
-          // Disable the fill-color so it composites cleanly on any background.
-          fillColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 280),
+      reverseTransitionDuration: const Duration(milliseconds: 220),
+      // ColoredBox ensures the white background is always painted
+      // before the page content, preventing the Navigator's default
+      // black background from bleeding through.
+      pageBuilder: (_, __, ___) => ColoredBox(
+        color: AppColors.surface,
+        child: page,
+      ),
+      transitionsBuilder: (_, animation, __, child) {
+        return FadeTransition(
+          opacity:
+              CurvedAnimation(parent: animation, curve: Curves.easeOut),
           child: child,
+        );
+      },
+    );
+  }
+
+  /// Scale-up + fade for the success / confirmation destination.
+  static PageRouteBuilder<T> _scaleRoute<T>(
+    Widget page,
+    RouteSettings settings,
+  ) {
+    return PageRouteBuilder<T>(
+      settings: settings,
+      transitionDuration: const Duration(milliseconds: 380),
+      reverseTransitionDuration: const Duration(milliseconds: 260),
+      pageBuilder: (_, __, ___) => ColoredBox(
+        color: AppColors.surface,
+        child: page,
+      ),
+      transitionsBuilder: (_, animation, __, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.94, end: 1.0).animate(curved),
+            child: child,
+          ),
         );
       },
     );

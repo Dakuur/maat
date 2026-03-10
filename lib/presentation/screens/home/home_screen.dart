@@ -87,9 +87,11 @@ class _HeroBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Keep 220 dp of visible content regardless of status-bar height.
+    final bannerHeight = 220 + MediaQuery.of(context).padding.top;
 
     return Container(
-      height: 260,
+      height: bannerHeight,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -114,6 +116,7 @@ class _HeroBanner extends StatelessWidget {
             ),
           ),
           SafeArea(
+            bottom: false,
             child: Padding(
               padding: const EdgeInsets.all(AppConstants.pagePadding),
               child: Column(

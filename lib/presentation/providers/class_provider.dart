@@ -16,7 +16,9 @@ enum LoadStatus { initial, loading, loaded, error }
 /// - Opens / cancels Firestore stream subscriptions for classes and check-ins.
 /// - Exposes derived state ([checkedInMemberIds]) so screens don't query
 ///   Firestore directly.
-/// - Delegates mutations (remove check-in) back to [FirebaseService].
+/// - Delegates mutations back to [FirebaseService] using an optimistic-UI
+///   pattern: the local list is updated immediately so the UI reacts without
+///   waiting for the round-trip, then writes are committed in the background.
 ///
 /// Lifecycle: a single instance is created at app start via [MultiProvider] in
 /// [app.dart] and lives for the entire app session. Streams are re-opened on
@@ -79,12 +81,14 @@ class ClassProvider extends ChangeNotifier {
 
   /// Opens a real-time listener for [classId]'s attendees.
   ///
-  /// Called from [ClassDetailScreen.initState]. The subscription is cancelled
-  /// in [stopWatchingCheckIns] when the screen is disposed, preventing memory
-  /// leaks and unnecessary Firestore reads.
-  void watchCheckInsForClass(String classId) {
+  /// Called from [ClassDetailScreen.initState] and on pull-to-refresh.
+  /// Pass [keepExisting] = true (used by pull-to-refresh) to keep the current
+  /// list visible while the stream reconnects, avoiding a blank-screen flash.
+  /// The subscription is cancelled in [stopWatchingCheckIns] when the screen
+  /// is disposed, preventing memory leaks and unnecessary Firestore reads.
+  void watchCheckInsForClass(String classId, {bool keepExisting = false}) {
     _checkInsStatus = LoadStatus.loading;
-    _currentCheckIns = [];
+    if (!keepExisting) _currentCheckIns = [];
     notifyListeners();
 
     _checkInsSub?.cancel();
@@ -102,21 +106,31 @@ class ClassProvider extends ChangeNotifier {
     );
   }
 
-  Future<void> removeCheckIn({
-    required String checkInId,
-    required String classId,
-  }) async {
-    await _service.removeCheckIn(checkInId: checkInId, classId: classId);
-  }
+  /// Removes [ids] from the local list immediately (optimistic UI), then fires
+  /// the Firestore deletes in the background without blocking the caller.
+  ///
+  /// If a write fails, the item is added back to the list. The live Firestore
+  /// stream also self-heals: any items that weren't actually deleted will
+  /// re-appear in the next stream emission.
+  void optimisticRemoveIds(List<String> ids) {
+    final idSet = ids.toSet();
+    final toRemove =
+        _currentCheckIns.where((c) => idSet.contains(c.id)).toList();
 
-  /// Removes multiple check-ins in sequence. Used by the multi-select remove
-  /// flow in [ClassDetailScreen].
-  Future<void> bulkRemoveCheckIns(List<CheckIn> checkIns) async {
-    for (final checkIn in checkIns) {
-      await _service.removeCheckIn(
-        checkInId: checkIn.id,
-        classId: checkIn.classId,
-      );
+    _currentCheckIns =
+        _currentCheckIns.where((c) => !idSet.contains(c.id)).toList();
+    notifyListeners();
+
+    for (final checkIn in toRemove) {
+      _service
+          .removeCheckIn(checkInId: checkIn.id, classId: checkIn.classId)
+          .catchError((_) {
+        // Revert: restore the item if the write failed.
+        if (!_currentCheckIns.any((c) => c.id == checkIn.id)) {
+          _currentCheckIns = [..._currentCheckIns, checkIn];
+          notifyListeners();
+        }
+      });
     }
   }
 

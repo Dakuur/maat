@@ -52,6 +52,7 @@ flutter:
   assets:
     - assets/fonts/
     - assets/maat-logo.png
+    - assets/maat-logo-inverted.png
 
   fonts:
     - family: Geist

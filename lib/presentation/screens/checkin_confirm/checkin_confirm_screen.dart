@@ -64,18 +64,18 @@ class _CheckInConfirmScreenState extends State<CheckInConfirmScreen> {
         backgroundColor: AppColors.surface,
         title: const Text('Clase completa'),
         content: Text(
-          '¿Seguro que quieres inscribir a ${widget.member.firstName} en esta clase? '
-          'Superará el límite de $maxCapacity alumnos.',
+          'Are you sure you want to enroll ${widget.member.firstName} in this class? '
+          'It will exceed the limit of $maxCapacity students.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancelar'),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.warning),
-            child: const Text('Sí, tengo permiso del profesor'),
+            child: const Text('Yes, I have permission from the professor'),
           ),
         ],
       ),

@@ -78,20 +78,22 @@ class _MemberSearchScreenState extends State<MemberSearchScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Clase completa'),
+        title: const Text('Full class'),
         content: Text(
-          '¿Seguro que quieres inscribir a $count alumno${count == 1 ? '' : 's'} '
-          'en esta clase? Superará el límite de $maxCapacity alumnos.',
+          'Are you sure you want to enroll $count student${count == 1 ? '' : 's'} in this class? '
+          'It will exceed the limit of $maxCapacity students.',
         ),
+        actionsAlignment: MainAxisAlignment.end,
+        actionsOverflowAlignment: OverflowBarAlignment.end,
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancelar'),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.warning),
-            child: const Text('Sí, tengo permiso del profesor'),
+            child: const Text('Yes, I have permission'),
           ),
         ],
       ),
@@ -229,19 +231,18 @@ class _MemberSearchScreenState extends State<MemberSearchScreen> {
           ),
 
           // ── Multi-select hint ──────────────────────────────────────────
-          if (!_multiSelectMode)
-            Container(
-              width: double.infinity,
-              color: AppColors.surface,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-              child: Text(
-                'Hold a member to select multiple',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppColors.textTertiary,
-                    ),
-              ),
+          // Always rendered (never conditional) to prevent layout shifts.
+          Container(
+            width: double.infinity,
+            color: AppColors.surface,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            child: Text(
+              'Hold a member to select multiple',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
             ),
+          ),
 
           // ── Member list / states ───────────────────────────────────────
           Expanded(
@@ -250,43 +251,54 @@ class _MemberSearchScreenState extends State<MemberSearchScreen> {
                 : RefreshIndicator(
                     onRefresh: () =>
                         context.read<CheckInProvider>().loadMembers(force: true),
-                    child: provider.filteredMembers.isEmpty
-                        ? ListView(
+                    child: Builder(
+                      builder: (context) {
+                        // Hide members already enrolled in this class so the
+                        // instructor can't accidentally register them twice.
+                        final visibleMembers = provider.filteredMembers
+                            .where((m) => !checkedInIds.contains(m.id))
+                            .toList();
+
+                        if (visibleMembers.isEmpty) {
+                          return ListView(
                             physics: const AlwaysScrollableScrollPhysics(),
                             children: [_NoResults(query: _controller.text)],
-                          )
-                        : ListView.builder(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            itemCount: provider.filteredMembers.length,
-                            itemBuilder: (context, index) {
-                              final member = provider.filteredMembers[index];
-                              final isSelected =
-                                  _selectedMemberIds.contains(member.id);
-                              return MemberListTile(
-                                member: member,
-                                isCheckedIn: checkedInIds.contains(member.id),
-                                isSelected: isSelected,
-                                inMultiSelectMode: _multiSelectMode,
-                                onLongPress: _multiSelectMode
-                                    ? null
-                                    : () => _enterMultiSelect(member.id),
-                                onTap: () {
-                                  if (_multiSelectMode) {
-                                    _toggleMember(member.id);
-                                    return;
-                                  }
-                                  provider.selectMember(member);
-                                  Navigator.of(context).pushNamed(
-                                    AppRouter.checkinConfirm,
-                                    arguments: {
-                                      'member': member,
-                                      'fitnessClass': widget.fitnessClass,
-                                    },
-                                  );
-                                },
-                              );
-                            },
-                          ),
+                          );
+                        }
+
+                        return ListView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          itemCount: visibleMembers.length,
+                          itemBuilder: (context, index) {
+                            final member = visibleMembers[index];
+                            final isSelected =
+                                _selectedMemberIds.contains(member.id);
+                            return MemberListTile(
+                              member: member,
+                              isSelected: isSelected,
+                              inMultiSelectMode: _multiSelectMode,
+                              onLongPress: _multiSelectMode
+                                  ? null
+                                  : () => _enterMultiSelect(member.id),
+                              onTap: () {
+                                if (_multiSelectMode) {
+                                  _toggleMember(member.id);
+                                  return;
+                                }
+                                provider.selectMember(member);
+                                Navigator.of(context).pushNamed(
+                                  AppRouter.checkinConfirm,
+                                  arguments: {
+                                    'member': member,
+                                    'fitnessClass': widget.fitnessClass,
+                                  },
+                                );
+                              },
+                            );
+                          },
+                        );
+                      },
+                    ),
                   ),
           ),
         ],
