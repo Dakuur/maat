@@ -6,8 +6,21 @@ import '../../data/models/check_in.dart';
 import '../../data/models/fitness_class.dart';
 import '../../data/services/firebase_service.dart';
 
+/// Granular load state used by the UI to decide what to render.
 enum LoadStatus { initial, loading, loaded, error }
 
+/// Manages the state for today's class schedule and the live attendee list
+/// of the currently viewed class.
+///
+/// Responsibilities:
+/// - Opens / cancels Firestore stream subscriptions for classes and check-ins.
+/// - Exposes derived state ([checkedInMemberIds]) so screens don't query
+///   Firestore directly.
+/// - Delegates mutations (remove check-in) back to [FirebaseService].
+///
+/// Lifecycle: a single instance is created at app start via [MultiProvider] in
+/// [app.dart] and lives for the entire app session. Streams are re-opened on
+/// demand by calling [watchTodaysClasses] / [watchCheckInsForClass].
 class ClassProvider extends ChangeNotifier {
   ClassProvider(this._service);
 
@@ -39,6 +52,11 @@ class ClassProvider extends ChangeNotifier {
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
+  /// Subscribes to today's classes stream.
+  ///
+  /// Cancels any existing subscription first, so this method is idempotent and
+  /// safe to call on pull-to-refresh. The UI transitions through
+  /// [LoadStatus.loading] → [LoadStatus.loaded] (or [LoadStatus.error]).
   void watchTodaysClasses() {
     _classesStatus = LoadStatus.loading;
     notifyListeners();
@@ -59,6 +77,11 @@ class ClassProvider extends ChangeNotifier {
     );
   }
 
+  /// Opens a real-time listener for [classId]'s attendees.
+  ///
+  /// Called from [ClassDetailScreen.initState]. The subscription is cancelled
+  /// in [stopWatchingCheckIns] when the screen is disposed, preventing memory
+  /// leaks and unnecessary Firestore reads.
   void watchCheckInsForClass(String classId) {
     _checkInsStatus = LoadStatus.loading;
     _currentCheckIns = [];
@@ -84,6 +107,17 @@ class ClassProvider extends ChangeNotifier {
     required String classId,
   }) async {
     await _service.removeCheckIn(checkInId: checkInId, classId: classId);
+  }
+
+  /// Removes multiple check-ins in sequence. Used by the multi-select remove
+  /// flow in [ClassDetailScreen].
+  Future<void> bulkRemoveCheckIns(List<CheckIn> checkIns) async {
+    for (final checkIn in checkIns) {
+      await _service.removeCheckIn(
+        checkInId: checkIn.id,
+        classId: checkIn.classId,
+      );
+    }
   }
 
   void stopWatchingCheckIns() {

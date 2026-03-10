@@ -10,10 +10,16 @@ class AttendeeListTile extends StatelessWidget {
     super.key,
     required this.checkIn,
     this.onTap,
+    this.onLongPress,
+    this.isSelected = false,
+    this.inMultiSelectMode = false,
   });
 
   final CheckIn checkIn;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final bool isSelected;
+  final bool inMultiSelectMode;
 
   @override
   Widget build(BuildContext context) {
@@ -22,14 +28,40 @@ class AttendeeListTile extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      child: Container(
+      onLongPress: onLongPress,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        color: isSelected ? AppColors.error.withAlpha(15) : null,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: AppColors.divider)),
         ),
         child: Row(
           children: [
-            _Avatar(checkIn: checkIn),
+            // Avatar with optional selection overlay
+            SizedBox(
+              width: 44,
+              height: 44,
+              child: Stack(
+                children: [
+                  _Avatar(checkIn: checkIn),
+                  if (isSelected)
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: AppColors.error.withAlpha(180),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.check_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                ],
+              ),
+            ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -44,9 +76,21 @@ class AttendeeListTile extends StatelessWidget {
                 ],
               ),
             ),
-            _StatusBadge(status: checkIn.status),
-            const SizedBox(width: 8),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+            // Trailing: radio in multi-select, status badge otherwise
+            if (inMultiSelectMode)
+              Icon(
+                isSelected
+                    ? Icons.check_circle_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                color: isSelected ? AppColors.error : AppColors.textTertiary,
+                size: 24,
+              )
+            else ...[
+              _StatusBadge(status: checkIn.status),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right_rounded,
+                  color: AppColors.textTertiary),
+            ],
           ],
         ),
       ),
