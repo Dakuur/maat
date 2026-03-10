@@ -122,26 +122,21 @@ class _HeroBanner extends StatelessWidget {
                   // Logo row
                   Row(
                     children: [
-                      // Outer border ring (visible against dark hero)
+                      // Logo: image clipped to circle + thin white border ring
                       Container(
-                        width: 54,
-                        height: 54,
+                        width: 52,
+                        height: 52,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: Colors.white.withAlpha(200),
-                            width: 1.5,
+                            color: Colors.white,
+                            width: 2,
                           ),
                         ),
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                          padding: const EdgeInsets.all(6),
+                        child: ClipOval(
                           child: Image.asset(
                             'assets/maat-logo.png',
-                            fit: BoxFit.contain,
+                            fit: BoxFit.cover,
                           ),
                         ),
                       ),
