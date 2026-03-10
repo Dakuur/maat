@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../presentation/providers/class_provider.dart';
 import '../../../presentation/widgets/class_card.dart';
+
+const _merchUrl = 'https://aranha.com/store';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -47,8 +50,17 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SliverPadding(
-            padding: EdgeInsets.only(top: 20, bottom: 40),
+            padding: EdgeInsets.only(top: 20),
             sliver: _ClassList(),
+          ),
+          const SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              AppConstants.pagePadding,
+              AppConstants.sectionSpacing,
+              AppConstants.pagePadding,
+              40,
+            ),
+            sliver: SliverToBoxAdapter(child: _MerchBanner()),
           ),
         ],
       ),
@@ -209,6 +221,98 @@ class _ClassList extends StatelessWidget {
                 .pushNamed(AppRouter.classDetail, arguments: fc),
           );
         },
+      ),
+    );
+  }
+}
+
+// ── Merch Banner ──────────────────────────────────────────────────────────────
+
+class _MerchBanner extends StatelessWidget {
+  const _MerchBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return GestureDetector(
+      onTap: () => launchUrl(
+        Uri.parse(_merchUrl),
+        mode: LaunchMode.externalApplication,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          height: 200,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Background gradient (mirrors hero banner colours)
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Color(0xFF8B1A00),
+                      Color(0xFF2C1800),
+                      Color(0xFF151515),
+                    ],
+                  ),
+                ),
+              ),
+              // Decorative large watermark text
+              Positioned(
+                right: -12,
+                bottom: -24,
+                child: Text(
+                  'STORE',
+                  style: TextStyle(
+                    fontSize: 110,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white.withAlpha(10),
+                    height: 1,
+                  ),
+                ),
+              ),
+              // Content
+              Padding(
+                padding: const EdgeInsets.all(AppConstants.pagePadding),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Label
+                    Text(
+                      'EXPERIENCE',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: AppColors.warning,
+                        letterSpacing: 2.0,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Spacer(),
+                    // Title
+                    Text(
+                      'Aranha x MAAT Store',
+                      style: theme.textTheme.headlineLarge?.copyWith(
+                        color: AppColors.textOnDark,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    // Subtitle
+                    Text(
+                      'Roll more, learn more, sweat more.\nSummer starts at the mat.',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withAlpha(179),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
