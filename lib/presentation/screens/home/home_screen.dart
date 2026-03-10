@@ -8,6 +8,7 @@ import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../presentation/providers/class_provider.dart';
 import '../../../presentation/widgets/class_card.dart';
+import '../../../presentation/widgets/fade_slide_in.dart';
 
 const _merchUrl = 'https://www.aranhabarcelona.com/';
 
@@ -32,8 +33,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final dateLabel = DateFormat('EEEE, d MMMM').format(DateTime.now());
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
+      body: RefreshIndicator(
+        onRefresh: () async {
+          context.read<ClassProvider>().watchTodaysClasses();
+          // Wait briefly so the indicator feels responsive while the stream re-fires.
+          await Future.delayed(const Duration(milliseconds: 600));
+        },
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
           SliverToBoxAdapter(child: _HeroBanner(dateLabel: dateLabel)),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(
@@ -63,6 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
             sliver: SliverToBoxAdapter(child: _MerchBanner()),
           ),
         ],
+        ),
       ),
     );
   }
@@ -120,14 +129,10 @@ class _HeroBanner extends StatelessWidget {
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        alignment: Alignment.center,
-                        child: const Text(
-                          'M',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 24,
-                            color: Colors.black,
-                          ),
+                        padding: const EdgeInsets.all(4),
+                        child: Image.asset(
+                          'assets/maat-logo.png',
+                          fit: BoxFit.contain,
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -215,10 +220,13 @@ class _ClassList extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final fc = classes[index];
-          return ClassCard(
-            fitnessClass: fc,
-            onTap: () => Navigator.of(context)
-                .pushNamed(AppRouter.classDetail, arguments: fc),
+          return FadeSlideIn(
+            index: index,
+            child: ClassCard(
+              fitnessClass: fc,
+              onTap: () => Navigator.of(context)
+                  .pushNamed(AppRouter.classDetail, arguments: fc),
+            ),
           );
         },
       ),

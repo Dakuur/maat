@@ -72,8 +72,11 @@ class ClassCard extends StatelessWidget {
                     size: 16, color: AppColors.textTertiary),
                 const SizedBox(width: 4),
                 Text(
-                  '${fc.attendeeCount} attendees',
-                  style: theme.textTheme.bodyMedium,
+                  '${fc.attendeeCount}/${fc.maxCapacity} attendees',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: fc.isFull ? AppColors.error : null,
+                    fontWeight: fc.isFull ? FontWeight.w600 : null,
+                  ),
                 ),
                 const Spacer(),
                 const Icon(Icons.person_outline_rounded,

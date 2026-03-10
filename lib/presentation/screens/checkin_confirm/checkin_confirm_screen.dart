@@ -78,11 +78,15 @@ class _CheckInConfirmScreenState extends State<CheckInConfirmScreen> {
         ),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppConstants.pagePadding),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(AppConstants.pagePadding),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
               const SizedBox(height: 16),
 
               // ── Member card ─────────────────────────────────────────────
@@ -212,6 +216,8 @@ class _CheckInConfirmScreenState extends State<CheckInConfirmScreen> {
               ),
               const SizedBox(height: 8),
             ],
+          ),
+            ),
           ),
         ),
       ),

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_constants.dart';
@@ -51,6 +52,8 @@ class _SuccessScreenState extends State<SuccessScreen>
           parent: _ctrl, curve: const Interval(0, 0.4, curve: Curves.easeIn)),
     );
 
+    // Trigger success haptic as the check-in is confirmed.
+    HapticFeedback.heavyImpact();
     _ctrl.forward();
 
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
@@ -92,6 +95,10 @@ class _SuccessScreenState extends State<SuccessScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // ── MAAT logo mark ──────────────────────────────────────────
+              const SizedBox(height: 4),
+              Image.asset('assets/maat-logo.png', width: 32, height: 32),
+
               const Spacer(),
 
               // ── Animated check icon ─────────────────────────────────────

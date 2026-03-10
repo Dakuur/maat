@@ -11,6 +11,7 @@ import '../../../data/models/fitness_class.dart';
 import '../../../presentation/providers/checkin_provider.dart';
 import '../../../presentation/providers/class_provider.dart';
 import '../../../presentation/widgets/attendee_list_tile.dart';
+import '../../../presentation/widgets/fade_slide_in.dart';
 import '../../../presentation/widgets/kiosk_button.dart';
 
 class ClassDetailScreen extends StatefulWidget {
@@ -224,9 +225,12 @@ class _AttendeesList extends StatelessWidget {
 
     return SliverList.builder(
       itemCount: checkIns.length,
-      itemBuilder: (ctx, i) => AttendeeListTile(
-        checkIn: checkIns[i],
-        onTap: () => _showAttendeeSheet(ctx, checkIns[i]),
+      itemBuilder: (ctx, i) => FadeSlideIn(
+        index: i,
+        child: AttendeeListTile(
+          checkIn: checkIns[i],
+          onTap: () => _showAttendeeSheet(ctx, checkIns[i]),
+        ),
       ),
     );
   }
@@ -384,7 +388,7 @@ class _AttendeeSheet extends StatelessWidget {
             height: 56,
             child: TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text(
+              child: const Text(
                 'Cancel',
                 style: TextStyle(
                   color: AppColors.textSecondary,

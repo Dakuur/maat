@@ -6,9 +6,25 @@ import '../models/fitness_class.dart';
 import '../models/member.dart';
 
 /// Single access point for all Firestore operations.
-/// Uses a singleton so the same instance is shared across providers.
+///
+/// Architecture: singleton so every [Provider] and screen shares the same
+/// [FirebaseFirestore] connection, avoiding duplicate listeners and redundant
+/// auth token usage.
+///
+/// Offline-first: Firestore's local persistence is enabled by default in the
+/// Flutter SDK. All read/write operations are optimistically cached on-device;
+/// when the device is offline the SDK serves cached data and queues writes.
+/// Once connectivity is restored, queued writes are flushed automatically and
+/// live listeners receive any remote changes — zero manual reconciliation.
+///
+/// Collections:
+/// - `members`   — gym member profiles (stable, long-lived documents)
+/// - `classes`   — today's fitness class schedule (created fresh by seeder)
+/// - `check_ins` — individual check-in records, referenced by classId/memberId
 class FirebaseService {
   FirebaseService._();
+
+  /// Global singleton — inject via [FirebaseService.instance].
   static final FirebaseService instance = FirebaseService._();
 
   final _db = FirebaseFirestore.instance;
@@ -99,8 +115,46 @@ class FirebaseService {
     await checkinBatch.commit();
   }
 
+  /// Deletes all classes and check-ins. Pass [includeMembers] to also wipe members.
+  Future<void> clearDatabase({bool includeMembers = false}) async {
+    final classes = await _classes.get();
+    final checkIns = await _checkIns.get();
+    final batch = _db.batch();
+    for (final doc in classes.docs) { batch.delete(doc.reference); }
+    for (final doc in checkIns.docs) { batch.delete(doc.reference); }
+    if (includeMembers) {
+      final members = await _members.get();
+      for (final doc in members.docs) { batch.delete(doc.reference); }
+    }
+    await batch.commit();
+  }
+
+  /// Seeds only members (idempotent – uses merge, safe to run repeatedly).
+  Future<void> seedMembersOnly() async {
+    final batch = _db.batch();
+    for (final m in _mockMembers) {
+      batch.set(
+        _members.doc(m['id'] as String),
+        {
+          'firstName': m['firstName'],
+          'lastName': m['lastName'],
+          'profilePicture': m['profilePicture'],
+          'memberSince': m['memberSince'],
+          'plan': m['plan'],
+        },
+        SetOptions(merge: true),
+      );
+    }
+    await batch.commit();
+  }
+
   // ── Members ───────────────────────────────────────────────────────────────
 
+  /// Returns all members ordered alphabetically by last name.
+  ///
+  /// One-time fetch — suitable for populating the check-in search list.
+  /// Uses Firestore's local cache when offline; the SDK transparently
+  /// falls back to the cache and the Future still resolves successfully.
   Future<List<Member>> getMembers() async {
     final snap = await _members.orderBy('lastName').get();
     return snap.docs.map(Member.fromFirestore).toList();
@@ -108,6 +162,14 @@ class FirebaseService {
 
   // ── Classes ───────────────────────────────────────────────────────────────
 
+  /// Real-time stream of all classes whose [startTime] falls within today.
+  ///
+  /// The stream emits a new list whenever any class document changes
+  /// (e.g. [attendeeCount] incremented after a check-in). The Firestore SDK
+  /// multiplexes this into a single persistent WebSocket connection.
+  ///
+  /// Offline behaviour: the stream continues emitting cached data. New events
+  /// are re-emitted when connectivity is restored and remote state diverges.
   Stream<List<FitnessClass>> watchTodaysClasses() {
     final now = DateTime.now();
     final start = DateTime(now.year, now.month, now.day);
@@ -124,6 +186,11 @@ class FirebaseService {
 
   // ── Check-ins ─────────────────────────────────────────────────────────────
 
+  /// Real-time stream of all check-in records for [classId], sorted by time.
+  ///
+  /// Used by [ClassDetailScreen] to show the live attendee list. The stream
+  /// is cancelled via [ClassProvider.stopWatchingCheckIns] when leaving the
+  /// screen to free the Firestore listener.
   Stream<List<CheckIn>> watchCheckInsForClass(String classId) {
     return _checkIns
         .where('classId', isEqualTo: classId)
@@ -144,7 +211,10 @@ class FirebaseService {
     return snap.docs.isNotEmpty;
   }
 
-  /// Removes a check-in and atomically decrements the class attendee count.
+  /// Removes a check-in and **atomically** decrements the class attendee count.
+  ///
+  /// Uses a Firestore transaction so the count and the document are always
+  /// consistent — even if two devices remove attendees simultaneously.
   Future<void> removeCheckIn({
     required String checkInId,
     required String classId,
@@ -160,8 +230,16 @@ class FirebaseService {
     });
   }
 
-  /// Records a check-in and atomically increments the class attendee count.
-  /// Throws if the member is already checked in.
+  /// Records a check-in and **atomically** increments the class attendee count.
+  ///
+  /// The operation is a Firestore transaction: the new [check_ins] document and
+  /// the updated [attendeeCount] on the class are committed together.
+  /// Throws [AlreadyCheckedInException] if the member already has an active
+  /// check-in for [classId].
+  ///
+  /// Offline behaviour: the transaction is queued locally and committed to the
+  /// server once the device reconnects. The local Firestore cache reflects the
+  /// change immediately, so the UI updates without waiting for connectivity.
   Future<void> checkInMember({
     required String memberId,
     required String classId,

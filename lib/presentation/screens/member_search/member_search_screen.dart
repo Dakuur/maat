@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_constants.dart';
@@ -7,6 +8,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../data/models/fitness_class.dart';
 import '../../../presentation/providers/checkin_provider.dart';
 import '../../../presentation/providers/class_provider.dart';
+import '../../../presentation/widgets/kiosk_button.dart';
 import '../../../presentation/widgets/member_list_tile.dart';
 
 class MemberSearchScreen extends StatefulWidget {
@@ -20,6 +22,10 @@ class MemberSearchScreen extends StatefulWidget {
 
 class _MemberSearchScreenState extends State<MemberSearchScreen> {
   final _controller = TextEditingController();
+
+  // ── Multi-select state ─────────────────────────────────────────────────────
+  bool _multiSelectMode = false;
+  final Set<String> _selectedMemberIds = {};
 
   @override
   void initState() {
@@ -39,26 +45,113 @@ class _MemberSearchScreenState extends State<MemberSearchScreen> {
     super.dispose();
   }
 
+  // ── Multi-select helpers ───────────────────────────────────────────────────
+
+  void _enterMultiSelect(String memberId) {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _multiSelectMode = true;
+      _selectedMemberIds.add(memberId);
+    });
+  }
+
+  void _toggleMember(String memberId) {
+    setState(() {
+      if (_selectedMemberIds.contains(memberId)) {
+        _selectedMemberIds.remove(memberId);
+        if (_selectedMemberIds.isEmpty) _multiSelectMode = false;
+      } else {
+        _selectedMemberIds.add(memberId);
+      }
+    });
+  }
+
+  void _exitMultiSelect() {
+    setState(() {
+      _multiSelectMode = false;
+      _selectedMemberIds.clear();
+    });
+  }
+
+  Future<void> _checkInSelected() async {
+    final provider = context.read<CheckInProvider>();
+    final selected = provider.filteredMembers
+        .where((m) => _selectedMemberIds.contains(m.id))
+        .toList();
+    if (selected.isEmpty) return;
+
+    final results = await provider.bulkCheckIn(
+      members: selected,
+      fitnessClass: widget.fitnessClass,
+    );
+
+    final ok = results.values.where((v) => v == 'ok').length;
+    final alreadyIn =
+        results.values.where((v) => v == 'already_checked_in').length;
+    final errors = results.values
+        .where((v) => v != 'ok' && v != 'already_checked_in')
+        .length;
+
+    _exitMultiSelect();
+
+    if (!mounted) return;
+    final parts = [
+      if (ok > 0) '$ok checked in',
+      if (alreadyIn > 0) '$alreadyIn already registered',
+      if (errors > 0) '$errors failed',
+    ];
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(parts.join(' · ')),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<CheckInProvider>();
     final checkedInIds = context.watch<ClassProvider>().checkedInMemberIds;
+    final isLoading = provider.state == CheckInState.loading;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.surface,
         surfaceTintColor: AppColors.surface,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text('Select Member'),
+        leading: _multiSelectMode
+            ? IconButton(
+                icon: const Icon(Icons.close_rounded),
+                onPressed: _exitMultiSelect,
+              )
+            : IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+        title: _multiSelectMode
+            ? Text('${_selectedMemberIds.length} selected')
+            : const Text('Select Member'),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
           child: Container(height: 1, color: AppColors.border),
         ),
       ),
+      bottomNavigationBar: _multiSelectMode && _selectedMemberIds.isNotEmpty
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+                child: KioskButton(
+                  label: 'Check In ${_selectedMemberIds.length} '
+                      '${_selectedMemberIds.length == 1 ? 'Member' : 'Members'}',
+                  icon: Icons.how_to_reg_rounded,
+                  isLoading: isLoading,
+                  onPressed: isLoading ? null : _checkInSelected,
+                ),
+              ),
+            )
+          : null,
       body: Column(
         children: [
           // ── Search bar ─────────────────────────────────────────────────
@@ -70,8 +163,8 @@ class _MemberSearchScreenState extends State<MemberSearchScreen> {
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
                 hintText: 'Search by name…',
-                prefixIcon:
-                    const Icon(Icons.search_rounded, color: AppColors.textTertiary),
+                prefixIcon: const Icon(Icons.search_rounded,
+                    color: AppColors.textTertiary),
                 suffixIcon: _controller.text.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.clear_rounded),
@@ -89,32 +182,66 @@ class _MemberSearchScreenState extends State<MemberSearchScreen> {
             ),
           ),
 
+          // ── Multi-select hint ──────────────────────────────────────────
+          if (!_multiSelectMode)
+            Container(
+              width: double.infinity,
+              color: AppColors.surface,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              child: Text(
+                'Hold a member to select multiple',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
+              ),
+            ),
+
           // ── Member list / states ───────────────────────────────────────
           Expanded(
             child: !provider.membersLoaded
                 ? const Center(child: CircularProgressIndicator())
-                : provider.filteredMembers.isEmpty
-                    ? _NoResults(query: _controller.text)
-                    : ListView.builder(
-                        itemCount: provider.filteredMembers.length,
-                        itemBuilder: (context, index) {
-                          final member = provider.filteredMembers[index];
-                          return MemberListTile(
-                            member: member,
-                            isCheckedIn: checkedInIds.contains(member.id),
-                            onTap: () {
-                              provider.selectMember(member);
-                              Navigator.of(context).pushNamed(
-                                AppRouter.checkinConfirm,
-                                arguments: {
-                                  'member': member,
-                                  'fitnessClass': widget.fitnessClass,
+                : RefreshIndicator(
+                    onRefresh: () =>
+                        context.read<CheckInProvider>().loadMembers(force: true),
+                    child: provider.filteredMembers.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [_NoResults(query: _controller.text)],
+                          )
+                        : ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            itemCount: provider.filteredMembers.length,
+                            itemBuilder: (context, index) {
+                              final member = provider.filteredMembers[index];
+                              final isSelected =
+                                  _selectedMemberIds.contains(member.id);
+                              return MemberListTile(
+                                member: member,
+                                isCheckedIn: checkedInIds.contains(member.id),
+                                isSelected: isSelected,
+                                inMultiSelectMode: _multiSelectMode,
+                                onLongPress: _multiSelectMode
+                                    ? null
+                                    : () => _enterMultiSelect(member.id),
+                                onTap: () {
+                                  if (_multiSelectMode) {
+                                    _toggleMember(member.id);
+                                    return;
+                                  }
+                                  provider.selectMember(member);
+                                  Navigator.of(context).pushNamed(
+                                    AppRouter.checkinConfirm,
+                                    arguments: {
+                                      'member': member,
+                                      'fitnessClass': widget.fitnessClass,
+                                    },
+                                  );
                                 },
                               );
                             },
-                          );
-                        },
-                      ),
+                          ),
+                  ),
           ),
         ],
       ),
