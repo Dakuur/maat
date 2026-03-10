@@ -58,3 +58,9 @@ devtools_options.yaml
 
 # Firebase binary
 firebase.exe
+
+# Firebase config files with sensitive keys — generate locally with:
+#   flutterfire configure
+lib/firebase_options.dart
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
