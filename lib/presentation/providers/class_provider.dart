@@ -109,6 +109,17 @@ class ClassProvider extends ChangeNotifier {
     await _service.removeCheckIn(checkInId: checkInId, classId: classId);
   }
 
+  /// Removes multiple check-ins in sequence. Used by the multi-select remove
+  /// flow in [ClassDetailScreen].
+  Future<void> bulkRemoveCheckIns(List<CheckIn> checkIns) async {
+    for (final checkIn in checkIns) {
+      await _service.removeCheckIn(
+        checkInId: checkIn.id,
+        classId: checkIn.classId,
+      );
+    }
+  }
+
   void stopWatchingCheckIns() {
     _checkInsSub?.cancel();
     _checkInsSub = null;

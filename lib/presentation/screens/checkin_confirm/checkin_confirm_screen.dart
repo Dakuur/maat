@@ -8,6 +8,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../data/models/fitness_class.dart';
 import '../../../data/models/member.dart';
 import '../../../presentation/providers/checkin_provider.dart';
+import '../../../presentation/providers/class_provider.dart';
 import '../../../presentation/widgets/kiosk_button.dart';
 import '../../../presentation/widgets/member_avatar.dart';
 
@@ -54,13 +55,50 @@ class _CheckInConfirmScreenState extends State<CheckInConfirmScreen> {
     super.dispose();
   }
 
+  /// Shows a confirmation dialog when adding this member would exceed the class
+  /// capacity. Returns `true` if the user chose to proceed anyway.
+  Future<bool> _confirmOverCapacity(int maxCapacity) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Clase completa'),
+        content: Text(
+          '¿Seguro que quieres inscribir a ${widget.member.firstName} en esta clase? '
+          'Superará el límite de $maxCapacity alumnos.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.warning),
+            child: const Text('Sí, tengo permiso del profesor'),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final provider = context.watch<CheckInProvider>();
     final timeFmt = DateFormat('HH:mm');
     final dateFmt = DateFormat('EEEE, d MMMM yyyy');
-    final fc = widget.fitnessClass;
+
+    // Use the live class data to get an up-to-date attendeeCount for the
+    // capacity check. Fall back to the navigation arg if not found.
+    final allClasses = context.watch<ClassProvider>().todaysClasses;
+    final fc = allClasses.isEmpty
+        ? widget.fitnessClass
+        : allClasses.firstWhere(
+            (c) => c.id == widget.fitnessClass.id,
+            orElse: () => widget.fitnessClass,
+          );
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -205,8 +243,16 @@ class _CheckInConfirmScreenState extends State<CheckInConfirmScreen> {
                 isLoading: provider.state == CheckInState.loading,
                 onPressed: provider.state == CheckInState.loading
                     ? null
-                    : () =>
-                        context.read<CheckInProvider>().submitCheckIn(),
+                    : () async {
+                        // Warn if the class is already at or over capacity.
+                        if (fc.isFull) {
+                          final ok =
+                              await _confirmOverCapacity(fc.maxCapacity);
+                          if (!ok || !mounted) return;
+                        }
+                        // ignore: use_build_context_synchronously
+                        context.read<CheckInProvider>().submitCheckIn();
+                      },
               ),
               const SizedBox(height: 12),
               KioskButton(

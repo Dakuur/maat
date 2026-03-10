@@ -26,7 +26,10 @@ class ClassCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(
+            color: fc.isFull ? AppColors.error : AppColors.border,
+            width: fc.isFull ? 1.5 : 1.0,
+          ),
         ),
         padding: const EdgeInsets.all(20),
         child: Column(

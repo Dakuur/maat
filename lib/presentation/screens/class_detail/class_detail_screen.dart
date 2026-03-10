@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
@@ -24,6 +25,11 @@ class ClassDetailScreen extends StatefulWidget {
 }
 
 class _ClassDetailScreenState extends State<ClassDetailScreen> {
+  // ── Multi-select state ─────────────────────────────────────────────────────
+  bool _multiSelectMode = false;
+  final Set<String> _selectedCheckInIds = {};
+  bool _isRemoving = false;
+
   @override
   void initState() {
     super.initState();
@@ -41,11 +47,138 @@ class _ClassDetailScreenState extends State<ClassDetailScreen> {
     super.dispose();
   }
 
+  // ── Multi-select helpers ───────────────────────────────────────────────────
+
+  void _enterMultiSelect(String checkInId) {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _multiSelectMode = true;
+      _selectedCheckInIds.add(checkInId);
+    });
+  }
+
+  void _toggleAttendee(String checkInId) {
+    setState(() {
+      if (_selectedCheckInIds.contains(checkInId)) {
+        _selectedCheckInIds.remove(checkInId);
+        if (_selectedCheckInIds.isEmpty) _multiSelectMode = false;
+      } else {
+        _selectedCheckInIds.add(checkInId);
+      }
+    });
+  }
+
+  void _exitMultiSelect() {
+    setState(() {
+      _multiSelectMode = false;
+      _selectedCheckInIds.clear();
+    });
+  }
+
+  Future<void> _removeSelected() async {
+    final count = _selectedCheckInIds.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Eliminar asistentes'),
+        content: Text(
+          '¿Eliminar $count asistente${count == 1 ? '' : 's'} de la clase?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isRemoving = true);
+
+    final toRemove = context
+        .read<ClassProvider>()
+        .currentCheckIns
+        .where((c) => _selectedCheckInIds.contains(c.id))
+        .toList();
+
+    try {
+      await context.read<ClassProvider>().bulkRemoveCheckIns(toRemove);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al eliminar: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _isRemoving = false;
+        _multiSelectMode = false;
+        _selectedCheckInIds.clear();
+      });
+    }
+  }
+
+  void _handleAttendeeTap(BuildContext ctx, CheckIn checkIn) {
+    if (_multiSelectMode) {
+      _toggleAttendee(checkIn.id);
+    } else {
+      _showAttendeeSheet(ctx, checkIn);
+    }
+  }
+
+  void _showAttendeeSheet(BuildContext context, CheckIn checkIn) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _AttendeeSheet(
+        checkIn: checkIn,
+        onRemove: () async {
+          Navigator.of(context).pop();
+          try {
+            await context.read<ClassProvider>().removeCheckIn(
+                  checkInId: checkIn.id,
+                  classId: checkIn.classId,
+                );
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Failed to remove: $e')),
+              );
+            }
+          }
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final timeFmt = DateFormat('HH:mm');
     final fc = widget.fitnessClass;
+
+    // Live attendee count from the active stream
+    final classProvider = context.watch<ClassProvider>();
+    final liveCount = classProvider.isLoadingCheckIns
+        ? fc.attendeeCount
+        : classProvider.currentCheckIns.length;
+    final isFull = liveCount >= fc.maxCapacity;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -56,11 +189,29 @@ class _ClassDetailScreenState extends State<ClassDetailScreen> {
             pinned: true,
             backgroundColor: AppColors.surface,
             surfaceTintColor: AppColors.surface,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new_rounded),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            title: Text(fc.name),
+            leading: _multiSelectMode
+                ? IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: _exitMultiSelect,
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+            title: _multiSelectMode
+                ? Text('${_selectedCheckInIds.length} seleccionados')
+                : Text(fc.name),
+            actions: _multiSelectMode
+                ? []
+                : [
+                    IconButton(
+                      icon: const Icon(Icons.refresh_rounded),
+                      tooltip: 'Refresh',
+                      onPressed: () => context
+                          .read<ClassProvider>()
+                          .watchCheckInsForClass(widget.fitnessClass.id),
+                    ),
+                  ],
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(1),
               child: Container(height: 1, color: AppColors.border),
@@ -87,7 +238,8 @@ class _ClassDetailScreenState extends State<ClassDetailScreen> {
                   const SizedBox(height: 10),
                   _InfoRow(
                     icon: Icons.people_rounded,
-                    text: '${fc.attendeeCount} / ${fc.maxCapacity} attendees',
+                    text: '$liveCount / ${fc.maxCapacity} attendees',
+                    color: isFull ? AppColors.error : null,
                   ),
                   const SizedBox(height: 18),
                   Wrap(
@@ -128,56 +280,108 @@ class _ClassDetailScreenState extends State<ClassDetailScreen> {
               4,
             ),
             sliver: SliverToBoxAdapter(
-              child: Text('Attendees', style: theme.textTheme.headlineMedium),
+              child: Row(
+                children: [
+                  Text('Attendees', style: theme.textTheme.headlineMedium),
+                  if (!_multiSelectMode) ...[
+                    const Spacer(),
+                    Text(
+                      'Mantén para seleccionar',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: AppColors.textTertiary),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
 
           // ── Attendees list ───────────────────────────────────────────────
-          const _AttendeesList(),
+          _AttendeesList(
+            multiSelectMode: _multiSelectMode,
+            selectedIds: _selectedCheckInIds,
+            onLongPress: (c) => _enterMultiSelect(c.id),
+            onTap: _handleAttendeeTap,
+          ),
 
           const SliverToBoxAdapter(child: SizedBox(height: 120)),
         ],
       ),
+
       // ── Bottom CTA ────────────────────────────────────────────────────────
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(AppConstants.pagePadding),
-          child: KioskButton(
-            label: 'Add Check-In',
-            icon: Icons.add_rounded,
-            onPressed: () => Navigator.of(context).pushNamed(
-              AppRouter.memberSearch,
-              arguments: widget.fitnessClass,
-            ),
-          ),
+          child: _multiSelectMode
+              ? KioskButton(
+                  label: _selectedCheckInIds.isEmpty
+                      ? 'Selecciona asistentes'
+                      : 'Eliminar ${_selectedCheckInIds.length} '
+                          'asistente${_selectedCheckInIds.length == 1 ? '' : 's'}',
+                  variant: KioskButtonVariant.danger,
+                  icon: Icons.person_remove_rounded,
+                  isLoading: _isRemoving,
+                  onPressed: _selectedCheckInIds.isEmpty || _isRemoving
+                      ? null
+                      : _removeSelected,
+                )
+              : KioskButton(
+                  label: 'Add Check-In',
+                  icon: Icons.add_rounded,
+                  onPressed: () => Navigator.of(context).pushNamed(
+                    AppRouter.memberSearch,
+                    arguments: widget.fitnessClass,
+                  ),
+                ),
         ),
       ),
     );
   }
 }
 
+// ── Info row ──────────────────────────────────────────────────────────────────
+
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.icon, required this.text});
+  const _InfoRow({required this.icon, required this.text, this.color});
 
   final IconData icon;
   final String text;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 18, color: AppColors.textSecondary),
+        Icon(icon, size: 18, color: color ?? AppColors.textSecondary),
         const SizedBox(width: 10),
         Expanded(
-          child: Text(text, style: Theme.of(context).textTheme.bodyLarge),
+          child: Text(
+            text,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: color,
+                  fontWeight: color != null ? FontWeight.w600 : null,
+                ),
+          ),
         ),
       ],
     );
   }
 }
 
+// ── Attendees list sliver ─────────────────────────────────────────────────────
+
 class _AttendeesList extends StatelessWidget {
-  const _AttendeesList();
+  const _AttendeesList({
+    required this.multiSelectMode,
+    required this.selectedIds,
+    required this.onLongPress,
+    required this.onTap,
+  });
+
+  final bool multiSelectMode;
+  final Set<String> selectedIds;
+  final void Function(CheckIn) onLongPress;
+  final void Function(BuildContext, CheckIn) onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -196,8 +400,7 @@ class _AttendeesList extends StatelessWidget {
     if (checkIns.isEmpty) {
       return SliverToBoxAdapter(
         child: Padding(
-          padding:
-              const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+          padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
           child: Column(
             children: [
               const Icon(Icons.people_outline_rounded,
@@ -229,40 +432,18 @@ class _AttendeesList extends StatelessWidget {
         index: i,
         child: AttendeeListTile(
           checkIn: checkIns[i],
-          onTap: () => _showAttendeeSheet(ctx, checkIns[i]),
+          isSelected: selectedIds.contains(checkIns[i].id),
+          inMultiSelectMode: multiSelectMode,
+          onLongPress:
+              multiSelectMode ? null : () => onLongPress(checkIns[i]),
+          onTap: () => onTap(ctx, checkIns[i]),
         ),
       ),
     );
   }
-
-  void _showAttendeeSheet(BuildContext context, CheckIn checkIn) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _AttendeeSheet(
-        checkIn: checkIn,
-        onRemove: () async {
-          Navigator.of(context).pop();
-          try {
-            await context.read<ClassProvider>().removeCheckIn(
-                  checkInId: checkIn.id,
-                  classId: checkIn.classId,
-                );
-          } catch (e) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Failed to remove: $e')),
-              );
-            }
-          }
-        },
-      ),
-    );
-  }
 }
+
+// ── Attendee detail sheet ─────────────────────────────────────────────────────
 
 class _AttendeeSheet extends StatelessWidget {
   const _AttendeeSheet({required this.checkIn, required this.onRemove});
@@ -302,7 +483,6 @@ class _AttendeeSheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Drag handle
           Container(
             width: 40,
             height: 4,
@@ -312,7 +492,6 @@ class _AttendeeSheet extends StatelessWidget {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          // Avatar
           ClipRRect(
             borderRadius: BorderRadius.circular(_avatarSize / 2),
             child: checkIn.memberProfilePicture != null
@@ -326,16 +505,13 @@ class _AttendeeSheet extends StatelessWidget {
                 : _fallbackAvatar(),
           ),
           const SizedBox(height: 16),
-          // Name
           Text(checkIn.memberName, style: theme.textTheme.headlineMedium),
           const SizedBox(height: 6),
-          // Check-in time
           Text(
             'Checked in at ${timeFmt.format(checkIn.checkedInAt)}',
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: 8),
-          // Status badge
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
@@ -357,7 +533,6 @@ class _AttendeeSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 32),
-          // Remove button
           SizedBox(
             width: double.infinity,
             height: 56,
@@ -382,7 +557,6 @@ class _AttendeeSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          // Cancel button
           SizedBox(
             width: double.infinity,
             height: 56,

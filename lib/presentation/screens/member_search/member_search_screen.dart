@@ -73,12 +73,58 @@ class _MemberSearchScreenState extends State<MemberSearchScreen> {
     });
   }
 
+  Future<bool> _confirmOverCapacity(int count, int maxCapacity) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Clase completa'),
+        content: Text(
+          '¿Seguro que quieres inscribir a $count alumno${count == 1 ? '' : 's'} '
+          'en esta clase? Superará el límite de $maxCapacity alumnos.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.warning),
+            child: const Text('Sí, tengo permiso del profesor'),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
   Future<void> _checkInSelected() async {
     final provider = context.read<CheckInProvider>();
     final selected = provider.filteredMembers
         .where((m) => _selectedMemberIds.contains(m.id))
         .toList();
     if (selected.isEmpty) return;
+
+    // Get live class data for an accurate capacity check.
+    final allClasses = context.read<ClassProvider>().todaysClasses;
+    final liveClass = allClasses.isEmpty
+        ? widget.fitnessClass
+        : allClasses.firstWhere(
+            (c) => c.id == widget.fitnessClass.id,
+            orElse: () => widget.fitnessClass,
+          );
+
+    // Count only members NOT already checked in to avoid false positives.
+    final checkedInIds = context.read<ClassProvider>().checkedInMemberIds;
+    final newCount =
+        selected.where((m) => !checkedInIds.contains(m.id)).length;
+
+    if (newCount > 0 &&
+        liveClass.attendeeCount + newCount > liveClass.maxCapacity) {
+      final ok = await _confirmOverCapacity(newCount, liveClass.maxCapacity);
+      if (!ok || !mounted) return;
+    }
 
     final results = await provider.bulkCheckIn(
       members: selected,

@@ -65,13 +65,10 @@ class MemberListTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(member.fullName, style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 2),
-                  Text(
-                    member.plan != null
-                        ? '${member.plan}  ·  ID: ${member.id}'
-                        : 'ID: ${member.id}',
-                    style: theme.textTheme.bodyMedium,
-                  ),
+                  if (member.plan != null) ...[
+                    const SizedBox(height: 2),
+                    Text(member.plan!, style: theme.textTheme.bodyMedium),
+                  ],
                 ],
               ),
             ),
