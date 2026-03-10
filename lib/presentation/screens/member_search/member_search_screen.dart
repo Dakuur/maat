@@ -128,32 +128,27 @@ class _MemberSearchScreenState extends State<MemberSearchScreen> {
       if (!ok || !mounted) return;
     }
 
-    final results = await provider.bulkCheckIn(
+    final result = await provider.bulkCheckIn(
       members: selected,
       fitnessClass: widget.fitnessClass,
     );
-
-    final ok = results.values.where((v) => v == 'ok').length;
-    final alreadyIn =
-        results.values.where((v) => v == 'already_checked_in').length;
-    final errors = results.values
-        .where((v) => v != 'ok' && v != 'already_checked_in')
-        .length;
 
     _exitMultiSelect();
 
     if (!mounted) return;
     final parts = [
-      if (ok > 0) '$ok checked in',
-      if (alreadyIn > 0) '$alreadyIn already registered',
-      if (errors > 0) '$errors failed',
+      if (result.ok > 0) '${result.ok} checked in',
+      if (result.alreadyIn > 0) '${result.alreadyIn} already registered',
+      if (result.failed > 0) '${result.failed} failed',
     ];
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(parts.join(' · ')),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    if (parts.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(parts.join(' · ')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────

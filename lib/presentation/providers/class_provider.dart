@@ -106,32 +106,37 @@ class ClassProvider extends ChangeNotifier {
     );
   }
 
-  /// Removes [ids] from the local list immediately (optimistic UI), then fires
-  /// the Firestore deletes in the background without blocking the caller.
+  /// Removes [ids] from the local list immediately (optimistic UI), then
+  /// commits a single [WriteBatch] in the background — one network round-trip,
+  /// one Firestore stream event, one list rebuild.
   ///
-  /// If a write fails, the item is added back to the list. The live Firestore
-  /// stream also self-heals: any items that weren't actually deleted will
-  /// re-appear in the next stream emission.
+  /// On batch failure every removed item is restored atomically with a single
+  /// [notifyListeners] call so the list snaps back without flickering.
   void optimisticRemoveIds(List<String> ids) {
     final idSet = ids.toSet();
     final toRemove =
         _currentCheckIns.where((c) => idSet.contains(c.id)).toList();
+    if (toRemove.isEmpty) return;
 
+    // Optimistic: remove all at once → exactly one rebuild.
     _currentCheckIns =
         _currentCheckIns.where((c) => !idSet.contains(c.id)).toList();
     notifyListeners();
 
-    for (final checkIn in toRemove) {
-      _service
-          .removeCheckIn(checkInId: checkIn.id, classId: checkIn.classId)
-          .catchError((_) {
-        // Revert: restore the item if the write failed.
-        if (!_currentCheckIns.any((c) => c.id == checkIn.id)) {
-          _currentCheckIns = [..._currentCheckIns, checkIn];
-          notifyListeners();
-        }
-      });
-    }
+    // Background: single batch for all deletes + one attendeeCount decrement.
+    final classId = toRemove.first.classId;
+    _service
+        .bulkRemoveCheckIns(checkIns: toRemove, classId: classId)
+        .catchError((_) {
+      // Revert: restore every item at once → exactly one rebuild.
+      final existingIds = _currentCheckIns.map((c) => c.id).toSet();
+      final toRestore =
+          toRemove.where((c) => !existingIds.contains(c.id)).toList();
+      if (toRestore.isNotEmpty) {
+        _currentCheckIns = [..._currentCheckIns, ...toRestore];
+        notifyListeners();
+      }
+    });
   }
 
   void stopWatchingCheckIns() {

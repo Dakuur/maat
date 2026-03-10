@@ -1,9 +1,33 @@
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../models/check_in.dart';
 import '../models/fitness_class.dart';
 import '../models/member.dart';
+
+/// Result returned by [FirebaseService.bulkCheckInMembers].
+class BulkCheckInResult {
+  const BulkCheckInResult({
+    required this.ok,
+    required this.alreadyIn,
+    required this.failed,
+  });
+
+  const BulkCheckInResult.empty() : ok = 0, alreadyIn = 0, failed = 0;
+
+  /// Members successfully checked in during this call.
+  final int ok;
+
+  /// Members that were already registered in the class (skipped).
+  final int alreadyIn;
+
+  /// Members whose write failed due to a Firestore error.
+  final int failed;
+
+  bool get hasAnyResult => ok > 0 || alreadyIn > 0 || failed > 0;
+}
 
 /// Single access point for all Firestore operations.
 ///
@@ -211,35 +235,43 @@ class FirebaseService {
     return snap.docs.isNotEmpty;
   }
 
-  /// Removes a check-in and **atomically** decrements the class attendee count.
-  ///
-  /// Uses a Firestore transaction so the count and the document are always
-  /// consistent — even if two devices remove attendees simultaneously.
+  /// Removes a single check-in atomically (transaction).
+  /// For bulk removals prefer [bulkRemoveCheckIns].
   Future<void> removeCheckIn({
     required String checkInId,
     required String classId,
   }) async {
-    final checkInRef = _checkIns.doc(checkInId);
-    final classRef = _classes.doc(classId);
-
-    await _db.runTransaction((tx) async {
-      tx.delete(checkInRef);
-      tx.update(classRef, {
-        'attendeeCount': FieldValue.increment(-1),
-      });
+    final batch = _db.batch();
+    batch.delete(_checkIns.doc(checkInId));
+    batch.update(_classes.doc(classId), {
+      'attendeeCount': FieldValue.increment(-1),
     });
+    await batch.commit();
   }
 
-  /// Records a check-in and **atomically** increments the class attendee count.
+  /// Removes multiple check-ins in **one** [WriteBatch].
   ///
-  /// The operation is a Firestore transaction: the new [check_ins] document and
-  /// the updated [attendeeCount] on the class are committed together.
-  /// Throws [AlreadyCheckedInException] if the member already has an active
-  /// check-in for [classId].
-  ///
-  /// Offline behaviour: the transaction is queued locally and committed to the
-  /// server once the device reconnects. The local Firestore cache reflects the
-  /// change immediately, so the UI updates without waiting for connectivity.
+  /// All deletes and the single attendeeCount decrement are committed
+  /// atomically — either every write succeeds or none does. This replaces
+  /// N sequential round-trips with a single network request, eliminating
+  /// the repeated stream emissions that cause list flicker.
+  Future<void> bulkRemoveCheckIns({
+    required List<CheckIn> checkIns,
+    required String classId,
+  }) async {
+    if (checkIns.isEmpty) return;
+    final batch = _db.batch();
+    for (final c in checkIns) {
+      batch.delete(_checkIns.doc(c.id));
+    }
+    batch.update(_classes.doc(classId), {
+      'attendeeCount': FieldValue.increment(-checkIns.length),
+    });
+    await batch.commit();
+  }
+
+  /// Records a single check-in atomically.
+  /// For bulk additions prefer [bulkCheckInMembers].
   Future<void> checkInMember({
     required String memberId,
     required String classId,
@@ -250,27 +282,94 @@ class FirebaseService {
       memberId: memberId,
       classId: classId,
     );
-    if (alreadyIn) {
-      throw const AlreadyCheckedInException();
+    if (alreadyIn) throw const AlreadyCheckedInException();
+
+    final batch = _db.batch();
+    batch.set(_checkIns.doc(), {
+      'memberId': memberId,
+      'classId': classId,
+      'memberName': memberName,
+      if (memberProfilePicture != null)
+        'memberProfilePicture': memberProfilePicture,
+      'checkedInAt': Timestamp.fromDate(DateTime.now()),
+      'status': CheckInStatus.confirmed.name,
+    });
+    batch.update(_classes.doc(classId), {
+      'attendeeCount': FieldValue.increment(1),
+    });
+    await batch.commit();
+  }
+
+  /// Checks in multiple members in **one** [WriteBatch].
+  ///
+  /// Steps:
+  ///  1. One `whereIn` query (chunked at 30 — Firestore SDK limit) to
+  ///     discover which members are already registered. Zero UI blocking.
+  ///  2. One [WriteBatch] with all new check-in documents + a single
+  ///     `attendeeCount` increment. The batch is atomic and fires a single
+  ///     stream event, so the attendee list rebuilds exactly once.
+  ///
+  /// Returns a [BulkCheckInResult] with tallies for ok / already-in / failed.
+  Future<BulkCheckInResult> bulkCheckInMembers({
+    required List<Member> members,
+    required FitnessClass fitnessClass,
+  }) async {
+    if (members.isEmpty) return const BulkCheckInResult.empty();
+
+    // ── 1. Detect already-checked-in members (chunked whereIn) ───────────────
+    final memberIds = members.map((m) => m.id).toList();
+    final Set<String> alreadyInIds = {};
+    const chunkSize = 30; // Firestore whereIn limit
+    for (var i = 0; i < memberIds.length; i += chunkSize) {
+      final chunk = memberIds.sublist(i, min(i + chunkSize, memberIds.length));
+      final snap = await _checkIns
+          .where('classId', isEqualTo: fitnessClass.id)
+          .where('memberId', whereIn: chunk)
+          .get();
+      alreadyInIds
+          .addAll(snap.docs.map((d) => d.data()['memberId'] as String));
     }
 
-    final checkInRef = _checkIns.doc();
-    final classRef = _classes.doc(classId);
+    final toAdd = members.where((m) => !alreadyInIds.contains(m.id)).toList();
+    if (toAdd.isEmpty) {
+      return BulkCheckInResult(
+        ok: 0,
+        alreadyIn: alreadyInIds.length,
+        failed: 0,
+      );
+    }
 
-    await _db.runTransaction((tx) async {
-      tx.set(checkInRef, {
-        'memberId': memberId,
-        'classId': classId,
-        'memberName': memberName,
-        if (memberProfilePicture != null)
-          'memberProfilePicture': memberProfilePicture,
-        'checkedInAt': Timestamp.fromDate(DateTime.now()),
+    // ── 2. Single WriteBatch: all new docs + one attendeeCount increment ──────
+    final batch = _db.batch();
+    final now = DateTime.now();
+    for (final m in toAdd) {
+      batch.set(_checkIns.doc(), {
+        'memberId': m.id,
+        'classId': fitnessClass.id,
+        'memberName': m.fullName,
+        if (m.profilePicture != null) 'memberProfilePicture': m.profilePicture,
+        'checkedInAt': Timestamp.fromDate(now),
         'status': CheckInStatus.confirmed.name,
       });
-      tx.update(classRef, {
-        'attendeeCount': FieldValue.increment(1),
-      });
+    }
+    batch.update(_classes.doc(fitnessClass.id), {
+      'attendeeCount': FieldValue.increment(toAdd.length),
     });
+
+    try {
+      await batch.commit();
+      return BulkCheckInResult(
+        ok: toAdd.length,
+        alreadyIn: alreadyInIds.length,
+        failed: 0,
+      );
+    } catch (_) {
+      return BulkCheckInResult(
+        ok: 0,
+        alreadyIn: alreadyInIds.length,
+        failed: toAdd.length,
+      );
+    }
   }
 
   // ── Mock data ─────────────────────────────────────────────────────────────

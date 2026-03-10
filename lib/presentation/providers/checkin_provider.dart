@@ -4,6 +4,8 @@ import '../../data/models/fitness_class.dart';
 import '../../data/models/member.dart';
 import '../../data/services/firebase_service.dart';
 
+export '../../data/services/firebase_service.dart' show BulkCheckInResult;
+
 /// Represents the result of a check-in submission attempt.
 enum CheckInState { idle, loading, success, error, alreadyCheckedIn }
 
@@ -117,37 +119,27 @@ class CheckInProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Checks in multiple members to the same class in sequence.
+  /// Checks in multiple members in a single [WriteBatch].
   ///
-  /// Returns a map of memberId → result string:
-  ///   'ok' | 'already_checked_in' | error message
-  Future<Map<String, String>> bulkCheckIn({
+  /// Fires [notifyListeners] exactly twice: once to enter the loading state,
+  /// once to leave it. The Firestore stream fires a single event (one batch
+  /// commit), so [ClassProvider] rebuilds the attendee list exactly once —
+  /// all new members appear simultaneously with no intermediate flicker.
+  Future<BulkCheckInResult> bulkCheckIn({
     required List<Member> members,
     required FitnessClass fitnessClass,
   }) async {
     _state = CheckInState.loading;
     notifyListeners();
 
-    final results = <String, String>{};
-    for (final member in members) {
-      try {
-        await _service.checkInMember(
-          memberId: member.id,
-          classId: fitnessClass.id,
-          memberName: member.fullName,
-          memberProfilePicture: member.profilePicture,
-        );
-        results[member.id] = 'ok';
-      } on AlreadyCheckedInException {
-        results[member.id] = 'already_checked_in';
-      } catch (e) {
-        results[member.id] = e.toString();
-      }
-    }
+    final result = await _service.bulkCheckInMembers(
+      members: members,
+      fitnessClass: fitnessClass,
+    );
 
     _state = CheckInState.idle;
     notifyListeners();
-    return results;
+    return result;
   }
 
   /// Resets ephemeral check-in state so the kiosk is ready for the next user.
