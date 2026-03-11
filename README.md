@@ -1,316 +1,221 @@
 # MAAT Kiosk
 
-A portrait-only, touch-first gym check-in kiosk built with Flutter and Firebase. Members tap their class, find their name, and confirm their attendance — the whole flow takes under five seconds.
-
----
-
-## Table of contents
-
-1. [Features](#features)
-2. [Architecture](#architecture)
-3. [Project structure](#project-structure)
-4. [Offline-first behaviour](#offline-first-behaviour)
-5. [Animations](#animations)
-6. [Database seeder](#database-seeder)
-7. [Getting started](#getting-started)
-8. [Environment & Firebase setup](#environment--firebase-setup)
+Touch-first gym check-in kiosk for Android. Members tap their class, find their name, confirm attendance — the whole flow takes under 5 seconds.
 
 ---
 
 ## Features
 
-| Feature | Details |
-|---|---|
-| Class schedule | Today's classes from Firestore, live-updating stream |
-| Member check-in | Search by name → confirm → success in ≤ 5 s |
-| Multi-select check-in | Long-press any member to batch check-in a group |
-| Live capacity | `X/Y attendees` — turns red when the class is full |
-| Live attendee list | Real-time updates — all kiosks always in sync |
-| Remove attendee | Tap an attendee in the class detail to remove them |
-| Offline support | Firestore SDK caches reads and queues writes locally |
-| Haptic feedback | Medium impact on long-press; heavy impact on success |
-| Pull-to-refresh | Home screen and member search list |
+### Check-In Flow
+- Browse today's class schedule on the Home screen
+- Tap a class → view live attendee list
+- Search for a member by name → confirm check-in
+- **Animated success screen**: floating member avatar(s), elastic check icon, fireworks burst, 5-second countdown with auto-redirect
+- Bulk check-in: long-press a member to enter multi-select, check in multiple at once
+
+### Google Authentication
+- Staff sign in with Google via the Home screen header button
+- Profile photo and name saved to Firestore `users/{uid}` on first login
+- Training plan selection dialog on first sign-in (Unlimited / 3x / 2x / 1x / Drop-in)
+- Sign-out clears Google Calendar sync data so no data leaks between accounts
+
+### Personal Join Class
+- When signed in, the class detail screen shows a **"You"** section at the top
+- Staff can join a class as a participant with "Join as [name]"
+- Joined classes show a **green border + "You're in" badge** on Home and Calendar
+
+### Weekly Schedule Calendar
+- Calendar icon in the Home header opens a **Timeline view** (6:00–23:00, 80 px/hour)
+- Navigate between days with `<` / `>` arrows, swipe left/right, or tap the label to jump to Today
+- Red current-time indicator on Today's view
+- Tap any class block to open its detail screen
+
+### Google Calendar Sync
+- "Sync with Google" button fetches **±7 days** in a single API call (15-day window)
+- Sync data **persists** while the app is open — navigating away and back does not require re-syncing, only "Re-sync" does
+- **Conflict detection**: gym class overlaps a personal calendar event → orange warning icon + red-tinted block
+- **Joined takes priority**: if you're already enrolled in a conflicting class, it shows green (not red) — you're committed
+- Sign-out clears the event cache
+
+### Offline-First
+Powered by Firestore's built-in local persistence:
+- Classes and check-in lists served from cache when offline
+- Writes queued locally and flushed automatically when connectivity resumes
+- Attendee list stream keeps emitting cached data during network loss
+
+### Multi-Select & Bulk Operations
+- Long-press an attendee to enter multi-select mode
+- Bulk remove: single `WriteBatch` → one network round-trip, one stream event, no list flicker
+- Bulk check-in from member search (chunked `whereIn` + one batch write)
 
 ---
 
 ## Architecture
 
-The app follows a **layered architecture** with a unidirectional data flow:
-
-```
-┌─────────────────────────────────────────┐
-│            Presentation layer           │
-│  Screens  ←→  Providers (ChangeNotifier)│
-└───────────────────┬─────────────────────┘
-                    │ calls
-┌───────────────────▼─────────────────────┐
-│             Service layer               │
-│          FirebaseService (singleton)    │
-└───────────────────┬─────────────────────┘
-                    │ reads / writes
-┌───────────────────▼─────────────────────┐
-│              Data layer                 │
-│   Firestore  ←→  Models (fromFirestore) │
-└─────────────────────────────────────────┘
-```
-
-### Key decisions
-
-**Singleton service** — `FirebaseService.instance` is shared across all providers. This guarantees a single `FirebaseFirestore` client, avoids duplicate listener registration, and keeps the token-refresh lifecycle centralised.
-
-**Provider (`ChangeNotifier`)** — Chosen over Riverpod or Bloc for minimal boilerplate. The two providers map directly to the two concerns of the app:
-
-| Provider | Concern |
-|---|---|
-| `ClassProvider` | Today's class schedule + live attendee list |
-| `CheckInProvider` | Member list, search, check-in flow state |
-
-Both are created at app start via `MultiProvider` in `app.dart` and live for the entire session.
-
-**Atomic transactions** — Both `checkInMember` and `removeCheckIn` use Firestore transactions. The `check_ins` document and the `attendeeCount` field on the class are always committed together, so the count displayed in the UI is always consistent with the actual documents — even under concurrent access from multiple kiosks.
-
-**Stream-based reactivity** — `ClassProvider` holds `StreamSubscription` objects mapped to Firestore `snapshots()` streams. The UI rebuilds automatically when any document changes — no polling, no manual refresh required.
-
-**Client-side search** — The member list (up to a few hundred entries) is loaded once and filtered in memory on every keystroke. This gives instant feedback with zero additional Firestore reads.
-
----
-
-## Project structure
-
 ```
 lib/
+├── app.dart                        # MultiProvider root + MaterialApp
+├── main.dart                       # Bootstrap: dotenv, Firebase init, orientation lock
 ├── core/
-│   ├── constants/    app_constants.dart      — timing, layout, collection names
-│   ├── router/       app_router.dart         — named routes + SharedAxisTransition
-│   └── theme/        app_colors.dart         — centralised colour palette
-│                     app_theme.dart          — Material 3 theme (Geist font)
-│
+│   ├── constants/app_constants.dart
+│   ├── router/app_router.dart      # Named routes, cross-fade + scale transitions
+│   └── theme/                      # AppColors, AppTheme (Geist variable font)
 ├── data/
-│   ├── models/       member.dart             — Member  (fromFirestore / toFirestore)
-│   │                 fitness_class.dart      — FitnessClass + isFull computed prop
-│   │                 check_in.dart           — CheckIn + CheckInStatus enum
-│   └── services/     firebase_service.dart   — all Firestore I/O (singleton)
-│
-├── presentation/
-│   ├── providers/    class_provider.dart     — class schedule + attendee stream
-│   │                 checkin_provider.dart   — member list, search, check-in flow
-│   ├── screens/
-│   │   ├── home/               — class schedule + hero banner
-│   │   ├── class_detail/       — live attendees, remove-attendee bottom sheet
-│   │   ├── member_search/      — search + multi-select bulk check-in
-│   │   ├── checkin_confirm/    — review card before submitting
-│   │   └── success/            — animated confirmation + 3 s auto-redirect
-│   └── widgets/
-│       ├── class_card.dart          — ClassCard with live capacity chip
-│       ├── member_list_tile.dart    — MemberListTile with multi-select support
-│       ├── attendee_list_tile.dart  — AttendeeListTile for the class detail screen
-│       ├── member_avatar.dart       — circular avatar with initials fallback
-│       ├── kiosk_button.dart        — large 64 px button (primary / secondary / danger)
-│       └── fade_slide_in.dart       — staggered fade + slide list entrance widget
-│
-├── utils/
-│   └── db_seeder.dart    — clearDatabase / seedPartial / seedFull helpers
-│
-├── app.dart              — MaterialApp, MultiProvider, router wiring
-└── main.dart             — Firebase init, edge-to-edge SystemChrome, app start
+│   ├── models/                     # FitnessClass, Member, CheckIn, AppUser,
+│   │                               # CalendarEvent, CheckedInPerson
+│   └── services/
+│       ├── auth_service.dart       # Google Sign-In wrapper + calendar scope request
+│       ├── calendar_service.dart   # Google Calendar REST API (range fetch)
+│       └── firebase_service.dart   # All Firestore operations
+└── presentation/
+    ├── providers/
+    │   ├── auth_provider.dart      # Auth state + users/{uid} lifecycle
+    │   ├── calendar_provider.dart  # App-level: day nav, class fetch, GCal cache, conflicts
+    │   ├── class_provider.dart     # Today's classes stream + check-ins + myJoinedClassIds
+    │   └── checkin_provider.dart   # Single check-in flow state machine
+    ├── screens/
+    │   ├── home/                   # Schedule list + hero banner + login button
+    │   ├── calendar/               # Timeline view + swipe nav + Google Calendar sync
+    │   ├── class_detail/           # Live attendee list + personal join + bulk remove
+    │   ├── member_search/          # Fuzzy search + bulk check-in
+    │   ├── checkin_confirm/        # Confirmation card with capacity guard
+    │   └── success/                # Animated: multi-avatar float + fireworks + countdown
+    └── widgets/                    # ClassCard, MemberAvatar, KioskButton, AttendeeListTile…
+scripts/
+├── seed.py                         # Python seeder (members + weekly schedule + check-ins)
+└── requirements.txt                # firebase-admin
 ```
+
+**State management**: `provider` (`ChangeNotifier`)
+**Font**: [Geist](https://vercel.com/font) — variable weight, local asset (165 KB)
+**CalendarProvider** lives at app level so Google Calendar sync persists across navigation
 
 ---
 
-## Offline-first behaviour
+## Firestore Collections
 
-MAAT Kiosk is fully functional without internet connectivity. The Firestore Flutter SDK ships with **local persistence enabled by default**: all documents are cached to disk and all pending writes are queued for later upload.
+| Collection   | Purpose |
+|-------------|---------|
+| `members`   | Gym member profiles (seeded by `scripts/seed.py`) |
+| `classes`   | Weekly schedule — Mon–Sat, seeded for N weeks |
+| `check_ins` | Individual check-in records (classId + memberId) |
+| `users`     | Authenticated staff accounts (displayName, email, photoUrl, trainingPlan) |
 
-### Cold start offline
-
-1. Firebase initialises from the on-device configuration — no network required.
-2. `ClassProvider.watchTodaysClasses()` opens a Firestore stream. The SDK immediately emits the **last known cached snapshot** from local disk.
-3. The home screen renders today's classes within milliseconds, entirely from cache.
-4. The member list is served from the `members` collection cache on the first check-in attempt.
-
-### Check-in while offline
-
-1. The user taps a class, finds their name, and taps **Check In**.
-2. `FirebaseService.checkInMember` calls `runTransaction(...)`.
-3. The Firestore SDK writes the new `check_ins` document and the updated `attendeeCount` **to local cache immediately**. The transaction is marked as a pending write.
-4. The `watchCheckInsForClass` stream emits the local change — the attendee appears in the list at once.
-5. The success screen is shown with haptic confirmation. From the user's perspective there is no difference from an online check-in.
-
-### Reconnection & automatic sync
-
-When internet is restored the Firestore SDK:
-
-1. Flushes all pending writes to the server in the order they were made.
-2. Re-evaluates any transactions server-side. Because `isMemberCheckedIn` is checked inside the transaction, duplicate check-ins from concurrent offline kiosks are caught and rejected — only one succeeds.
-3. Pushes any remote changes to all live listeners. `ClassProvider` receives the updated documents and the UI reflects the final server state automatically.
-
-### Edge case: two kiosks, both offline
-
-If two kiosks check in the same member while both are offline, both will show a local "success". When they reconnect, one transaction will succeed and the other will fail on the server (the second `checkInMember` call finds an existing record and throws `AlreadyCheckedInException`). The failed transaction is rolled back and the UI of the second kiosk would show the error — but since the success screen has already been dismissed, this is a silent reconciliation in practice. For a single-kiosk deployment this scenario is impossible.
-
----
-
-## Animations
-
-### Page transitions
-
-All screen transitions use `SharedAxisTransition` (horizontal axis) from the [`animations`](https://pub.dev/packages/animations) package — the Material Motion shared-axis pattern. The outgoing screen fades and slides left while the incoming screen arrives from the right.
-
-The **success screen** uses `SharedAxisTransitionType.scaled` instead, giving a distinct "zooming in" feel that reinforces the celebratory moment.
-
-| Route | Transition | Duration |
-|---|---|---|
-| Home → Class Detail | Horizontal shared axis | 300 ms / 250 ms reverse |
-| Class Detail → Member Search | Horizontal shared axis | 300 ms / 250 ms reverse |
-| Member Search → Confirm | Horizontal shared axis | 300 ms / 250 ms reverse |
-| Confirm → Success | Scaled shared axis | 300 ms / 250 ms reverse |
-
-### List entrance animations
-
-`FadeSlideIn` (`lib/presentation/widgets/fade_slide_in.dart`) wraps individual list items with a combined **fade-in + 7 % upward slide**, staggered by `index × 55 ms`. Both transforms run on the GPU via Flutter's compositor (`FadeTransition` / `SlideTransition`) — no `setState` fires during the animation, so there is no extra rebuild cost.
-
-Used on:
-- Class cards on the Home screen (up to 9 items, max 440 ms total stagger)
-- Attendee tiles on the Class Detail screen
-
-### Haptic feedback
-
-| Action | Feedback |
-|---|---|
-| Long-press member to start multi-select | `HapticFeedback.mediumImpact()` |
-| Check-in success screen appears | `HapticFeedback.heavyImpact()` |
-
----
-
-## Database seeder
-
-`DbSeeder` (`lib/utils/db_seeder.dart`) provides three static methods for populating Firestore with demo data. The seeder is completely **decoupled from the app startup** — the app reads from Firestore cold on every launch; it never seeds automatically.
-
-### Methods
-
-| Method | What it does |
-|---|---|
-| `DbSeeder.clearDatabase()` | Deletes all `classes` and `check_ins`. Members are preserved by default. |
-| `DbSeeder.clearDatabase(includeMembers: true)` | Also deletes all member documents. |
-| `DbSeeder.seedPartial()` | Seeds the 20 demo members using `SetOptions(merge: true)` — safe to run on a live database. |
-| `DbSeeder.seedFull()` | Seeds members + today's classes + pre-assigned check-ins. Wipes classes/check-ins first so timestamps are always "today". |
-
-### From a hidden UI button
-
-Wire the seeder to a long-press on any hidden element (e.g. the logo):
-
-```dart
-GestureDetector(
-  onLongPress: () async {
-    await DbSeeder.seedFull();
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Database re-seeded ✓')),
-      );
-    }
-  },
-  child: const LogoWidget(),
-)
-```
-
-### From a standalone Dart script
-
-```dart
-// tool/seed.dart
-import 'package:firebase_core/firebase_core.dart';
-import 'package:maat_kiosk/firebase_options.dart';
-import 'package:maat_kiosk/utils/db_seeder.dart';
-
-Future<void> main() async {
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  print('Clearing database…');
-  await DbSeeder.clearDatabase();
-  print('Seeding full demo data…');
-  await DbSeeder.seedFull();
-  print('Done.');
-}
-```
-
-```bash
-dart run tool/seed.dart
-```
-
----
-
-## Getting started
-
-### Prerequisites
-
-- Flutter 3.10+ (tested on **3.41.4**)
-- Dart 3.3+
-- An Android device / emulator (API 26+) or iOS 14+
-- A Firebase project with **Cloud Firestore** enabled
-
-### Install & run
-
-```bash
-git clone https://github.com/Dakuur/maat
-cd maat_kiosk
-flutter pub get
-flutter run
-```
-
-On first launch with an empty Firestore the app shows **"No classes today"**. Seed the database from the developer button or with `DbSeeder.seedFull()`.
-
----
-
-## Environment & Firebase setup
-
-Firebase configuration files are excluded from version control. Each environment (dev / staging / prod) needs its own set:
-
-| File | Platform |
-|---|---|
-| `lib/firebase_options.dart` | Generated by `flutterfire configure` |
-| `android/app/google-services.json` | Android |
-| `ios/Runner/GoogleService-Info.plist` | iOS / macOS |
-
-```bash
-# Install the FlutterFire CLI once
-dart pub global activate flutterfire_cli
-
-# Generate config for your project
-flutterfire configure --project=<your-firebase-project-id>
-```
-
-### Recommended Firestore security rules
-
-```js
+### Security Rules
+```javascript
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Members: kiosk reads, admin writes only
-    match /members/{id} {
-      allow read: if true;
-      allow write: if request.auth != null;
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-    // Classes: kiosk reads; seeder / admin writes
-    match /classes/{id} {
-      allow read: if true;
-      allow write: if request.auth != null;
-    }
-    // Check-ins: kiosk creates and deletes; no direct updates
-    match /check_ins/{id} {
-      allow read, create, delete: if true;
-      allow update: if false;
-    }
+    match /members/{doc}   { allow read, write: if true; }
+    match /classes/{doc}   { allow read, write: if true; }
+    match /check_ins/{doc} { allow read, write: if true; }
   }
 }
 ```
 
 ---
 
-## Tech stack
+## Database Seeding
 
-| Concern | Choice | Reason |
-|---|---|---|
-| Framework | Flutter 3.x | Single codebase, 120/144 Hz capable |
-| Database | Firebase Cloud Firestore | Real-time streams, offline persistence |
-| State | Provider (`ChangeNotifier`) | Minimal boilerplate, easy to test |
-| Transitions | `animations` package | Material Motion spec, GPU-composited |
-| Font | Geist variable TTF (self-hosted) | No Google Fonts network call |
-| Images | `cached_network_image` | Persistent disk cache for avatars |
+All seeding is done via the Python script. The Flutter app contains no seeding logic.
+
+```bash
+cd scripts
+pip install -r requirements.txt
+# Place service-account.json here (download from Firebase Console > Service Accounts)
+
+python seed.py                          # 30 members, 9 weeks, 2–8 check-ins/class
+python seed.py --members 50             # custom member count
+python seed.py --weeks 12               # ~3 months of classes
+python seed.py --max-checkins 12        # busier classes
+python seed.py --wipe                   # wipe everything first, then seed
+python seed.py --wipe-checkins          # keep members, reset check-ins
+python seed.py --dry-run                # preview without writing
+```
+
+**Default schedule** (23 classes/week × 9 weeks = 207 classes):
+
+| Day | Classes |
+|-----|---------|
+| Monday | BJJ Fundamentals · Muay Thai Basics · Open Mat · BJJ/Grappling |
+| Tuesday | Wrestling · BJJ/Grappling · Muay Thai Advanced · No-Gi |
+| Wednesday | BJJ Fundamentals · Open Mat · Muay Thai Basics · BJJ/Grappling · MMA Conditioning |
+| Thursday | Muay Thai Basics · No-Gi · BJJ Advanced · Wrestling |
+| Friday | BJJ Fundamentals · Muay Thai Advanced · Open Mat · BJJ/Grappling · MMA Conditioning |
+| Saturday | Open Mat |
+| Sunday | — |
+
+---
+
+## Google APIs Setup
+
+### 1. Firebase / Google Sign-In
+1. Create Android app in Firebase Console — package `com.david.maat_kiosk`
+2. Add the debug SHA-1 under Project Settings → Android app → Add fingerprint
+3. Download `google-services.json` → `android/app/google-services.json`
+4. Enable **Google** under Firebase Console → Authentication → Sign-in method
+
+### 2. Google Calendar API
+```
+https://console.developers.google.com/apis/api/calendar-json.googleapis.com/overview?project=21896097619
+```
+
+### 3. `.env` file
+```dotenv
+FIREBASE_PROJECT_ID="maat-f5d20"
+GOOGLE_WEB_CLIENT_ID="21896097619-xxxx.apps.googleusercontent.com"
+```
+
+---
+
+## Building & APK Size
+
+```bash
+flutter pub get
+
+# Development (hot reload)
+flutter run
+
+# Release APK — split by CPU architecture (install only the relevant one)
+flutter build apk --release --split-per-abi
+
+# Android App Bundle for Play Store (smallest download size)
+flutter build appbundle --release
+```
+
+### APK sizes (measured)
+
+| Build type | Size | Notes |
+|-----------|------|-------|
+| Debug APK | ~57 MB | Includes Dart VM + debug symbols — never distribute |
+| Release arm64-v8a | **18.7 MB** | All modern Android phones (2017+) |
+| Release armeabi-v7a | 16.3 MB | Older/32-bit devices |
+| Release x86_64 | 20.0 MB | Emulators / Chromebooks |
+
+The majority of the release size comes from the Firebase SDK (~8 MB) and the Flutter engine (~5 MB). The app's own code and assets (Geist font 165 KB + logos 17 KB) contribute under 0.5 MB.
+
+**To install the right APK on a device:**
+```bash
+# Check device architecture
+adb shell getprop ro.product.cpu.abi
+# → arm64-v8a on almost all modern phones
+
+adb install build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+```
+
+---
+
+## Route Transitions
+
+All routes use `PageRouteBuilder` with a solid white `ColoredBox` backing — no black flash:
+
+| Transition | Duration | Effect |
+|-----------|---------|--------|
+| Standard push | 280 ms | Cross-fade |
+| Standard pop | 220 ms | Cross-fade |
+| Calendar day swipe | 300 ms | Slide + fade |
+| Success screen | 380 ms | Scale 0.94→1 + fade |
+| Success reverse | 260 ms | Scale + fade |

@@ -7,12 +7,25 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:21896097619:android:e7b9b6f7be5e84d588bba6",
+        "mobilesdk_app_id": "1:21896097619:android:f705bfc96a8ba87288bba6",
         "android_client_info": {
-          "package_name": "com.maat.maat_kiosk"
+          "package_name": "com.david.maat_kiosk"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "21896097619-3c0dfenetl5rlm32ccfphjl7oume038k.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.david.maat_kiosk",
+            "certificate_hash": "08cad23946e9c1d2df0c5a10dd42de8d3ca7bde7"
+          }
+        },
+        {
+          "client_id": "21896097619-f395omcfdho7jc0d0ipninob3jaagshc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBBSiIyl61huSRNlqEMTkpxMbpWMES1gPY"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "21896097619-f395omcfdho7jc0d0ipninob3jaagshc.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "21896097619-tmd4ccctf4ubtgj9o98e68t37p6qcf1t.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.maat.maatKiosk"
+              }
+            }
+          ]
         }
       }
     }

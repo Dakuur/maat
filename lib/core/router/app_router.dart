@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../data/models/checked_in_person.dart';
 import '../../data/models/fitness_class.dart';
 import '../../data/models/member.dart';
 import '../../presentation/screens/checkin_confirm/checkin_confirm_screen.dart';
 import '../../presentation/screens/class_detail/class_detail_screen.dart';
+import '../../presentation/screens/calendar/calendar_screen.dart';
 import '../../presentation/screens/home/home_screen.dart';
 import '../../presentation/screens/member_search/member_search_screen.dart';
 import '../../presentation/screens/success/success_screen.dart';
@@ -16,6 +18,7 @@ import '../../presentation/screens/success/success_screen.dart';
 /// The success screen uses a subtle scale + fade to feel celebratory.
 abstract final class AppRouter {
   static const String home = '/';
+  static const String calendar = '/calendar';
   static const String classDetail = '/class-detail';
   static const String memberSearch = '/member-search';
   static const String checkinConfirm = '/checkin-confirm';
@@ -25,6 +28,9 @@ abstract final class AppRouter {
     switch (settings.name) {
       case home:
         return _fadeRoute(const HomeScreen(), settings);
+
+      case calendar:
+        return _fadeRoute(const CalendarScreen(), settings);
 
       case classDetail:
         final fc = settings.arguments as FitnessClass;
@@ -46,11 +52,18 @@ abstract final class AppRouter {
 
       case success:
         final args = settings.arguments as Map<String, dynamic>;
+        final fc = args['fitnessClass'] as FitnessClass;
+        // Accept either the new List<CheckedInPerson> format or the legacy
+        // single-member format so existing callers don't break.
+        final people = args['people'] as List<CheckedInPerson>? ??
+            [
+              CheckedInPerson(
+                name: (args['member'] as Member).fullName,
+                photoUrl: (args['member'] as Member).profilePicture,
+              )
+            ];
         return _scaleRoute(
-          SuccessScreen(
-            member: args['member'] as Member,
-            fitnessClass: args['fitnessClass'] as FitnessClass,
-          ),
+          SuccessScreen(people: people, fitnessClass: fc),
           settings,
         );
 

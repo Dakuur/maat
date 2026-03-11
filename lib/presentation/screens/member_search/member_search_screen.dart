@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/router/app_router.dart';
+import '../../../data/models/checked_in_person.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/fitness_class.dart';
 import '../../../presentation/providers/checkin_provider.dart';
@@ -134,14 +135,30 @@ class _MemberSearchScreenState extends State<MemberSearchScreen> {
     );
 
     _exitMultiSelect();
-
     if (!mounted) return;
-    final parts = [
-      if (result.ok > 0) '${result.ok} checked in',
-      if (result.alreadyIn > 0) '${result.alreadyIn} already registered',
-      if (result.failed > 0) '${result.failed} failed',
-    ];
-    if (parts.isNotEmpty) {
+
+    if (result.ok > 0) {
+      // Navigate to the success screen showing all newly checked-in members.
+      // We use pushNamedAndRemoveUntil so Back leads straight to Home.
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRouter.success,
+        (route) => route.settings.name == AppRouter.home,
+        arguments: {
+          'people': selected
+              .map((m) => CheckedInPerson(
+                    name: m.fullName,
+                    photoUrl: m.profilePicture,
+                  ))
+              .toList(),
+          'fitnessClass': widget.fitnessClass,
+        },
+      );
+    } else {
+      // All were already registered — just show a snack.
+      final parts = [
+        if (result.alreadyIn > 0) '${result.alreadyIn} already registered',
+        if (result.failed > 0) '${result.failed} failed',
+      ];
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(parts.join(' · ')),

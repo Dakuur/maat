@@ -17,7 +17,7 @@ class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) return web;
     return switch (defaultTargetPlatform) {
-      TargetPlatform.android => android,
+      TargetPlatform.android => android, // package: com.david.maat_kiosk
       TargetPlatform.iOS => ios,
       _ => throw UnsupportedError(
           'DefaultFirebaseOptions are not configured for this platform.',
@@ -38,7 +38,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBBSiIyl61huSRNlqEMTkpxMbpWMES1gPY',
-    appId: '1:21896097619:android:e7b9b6f7be5e84d588bba6',
+    appId: '1:21896097619:android:f705bfc96a8ba87288bba6',
     messagingSenderId: '21896097619',
     projectId: 'maat-f5d20',
     storageBucket: 'maat-f5d20.firebasestorage.app',

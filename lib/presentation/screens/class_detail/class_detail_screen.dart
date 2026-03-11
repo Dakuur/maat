@@ -5,10 +5,13 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_constants.dart';
+import '../../../data/models/checked_in_person.dart';
+import '../../../data/services/firebase_service.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/check_in.dart';
 import '../../../data/models/fitness_class.dart';
+import '../../../presentation/providers/auth_provider.dart';
 import '../../../presentation/providers/checkin_provider.dart';
 import '../../../presentation/providers/class_provider.dart';
 import '../../../presentation/widgets/attendee_list_tile.dart';
@@ -296,6 +299,9 @@ class _ClassDetailScreenState extends State<ClassDetailScreen> {
               ),
             ),
 
+            // ── Personal join section (logged-in user) ─────────────────────
+            _PersonalJoinSection(fitnessClass: widget.fitnessClass),
+
             // ── Attendees list ─────────────────────────────────────────────
             _AttendeesList(
               multiSelectMode: _multiSelectMode,
@@ -334,6 +340,131 @@ class _ClassDetailScreenState extends State<ClassDetailScreen> {
                   ),
                 ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Personal join section ─────────────────────────────────────────────────────
+
+class _PersonalJoinSection extends StatelessWidget {
+  const _PersonalJoinSection({required this.fitnessClass});
+  final FitnessClass fitnessClass;
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    if (!auth.isLoggedIn) return const SliverToBoxAdapter(child: SizedBox.shrink());
+
+    final user = auth.user!;
+    final myMemberId = 'user:${user.uid}';
+    final checkIns = context.watch<ClassProvider>().currentCheckIns;
+    final myCheckIn = checkIns.where((c) => c.memberId == myMemberId).firstOrNull;
+
+    return SliverToBoxAdapter(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppConstants.pagePadding, 20, AppConstants.pagePadding, 8),
+            child: Text(
+              'You',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: AppColors.textTertiary,
+                letterSpacing: 1.0,
+              ),
+            ),
+          ),
+          if (myCheckIn != null)
+            // Already checked in — show highlighted tile with remove
+            Container(
+              margin: const EdgeInsets.symmetric(
+                horizontal: AppConstants.pagePadding, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.success.withAlpha(15),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.success.withAlpha(60)),
+              ),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundImage: user.photoUrl != null
+                      ? NetworkImage(user.photoUrl!)
+                      : null,
+                  backgroundColor: AppColors.success.withAlpha(40),
+                  child: user.photoUrl == null
+                      ? Text(
+                          user.displayName.isNotEmpty
+                              ? user.displayName[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                            color: AppColors.success,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        )
+                      : null,
+                ),
+                title: Text(user.displayName),
+                subtitle: const Text('Checked in'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.remove_circle_outline_rounded,
+                      color: AppColors.error, size: 22),
+                  onPressed: () {
+                    context.read<ClassProvider>().optimisticRemoveIds(
+                        [myCheckIn.id]);
+                  },
+                ),
+              ),
+            )
+          else
+            // Not yet joined — show "Join this class" button
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppConstants.pagePadding, vertical: 2),
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  try {
+                    await FirebaseService.instance.selfCheckIn(
+                      uid: user.uid,
+                      displayName: user.displayName,
+                      photoUrl: user.photoUrl,
+                      classId: fitnessClass.id,
+                    );
+                    if (context.mounted) {
+                      Navigator.of(context).pushNamedAndRemoveUntil(
+                        AppRouter.success,
+                        (route) => route.settings.name == AppRouter.home,
+                        arguments: {
+                          'people': [
+                            CheckedInPerson(
+                              name: user.displayName,
+                              photoUrl: user.photoUrl,
+                            ),
+                          ],
+                          'fitnessClass': fitnessClass,
+                        },
+                      );
+                    }
+                  } on AlreadyCheckedInException {
+                    // already in — stream updates automatically
+                  }
+                },
+                icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                label: Text('Join as ${user.displayName.split(' ').first}'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          const Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: AppConstants.pagePadding, vertical: 12),
+            child: Divider(height: 1, color: AppColors.divider),
+          ),
+        ],
       ),
     );
   }

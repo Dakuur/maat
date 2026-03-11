@@ -1,3 +1,6 @@
+# Service account key — never commit this
+scripts/service-account.json
+
 # Miscellaneous
 *.class
 *.log
@@ -64,3 +67,7 @@ firebase.exe
 lib/firebase_options.dart
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
+
+.env
+google-services.json
+*.keystore

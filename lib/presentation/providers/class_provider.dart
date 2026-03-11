@@ -31,16 +31,20 @@ class ClassProvider extends ChangeNotifier {
   // ── State ─────────────────────────────────────────────────────────────────
   List<FitnessClass> _todaysClasses = [];
   List<CheckIn> _currentCheckIns = [];
+  Set<String> _myJoinedClassIds = {};
   LoadStatus _classesStatus = LoadStatus.initial;
   LoadStatus _checkInsStatus = LoadStatus.initial;
   String? _errorMessage;
 
   StreamSubscription<List<FitnessClass>>? _classesSub;
   StreamSubscription<List<CheckIn>>? _checkInsSub;
+  StreamSubscription<Set<String>>? _myCheckInsSub;
 
   // ── Getters ───────────────────────────────────────────────────────────────
   List<FitnessClass> get todaysClasses => _todaysClasses;
   List<CheckIn> get currentCheckIns => _currentCheckIns;
+  /// Class IDs where the signed-in user (staff/trainer) is personally enrolled.
+  Set<String> get myJoinedClassIds => _myJoinedClassIds;
   LoadStatus get classesStatus => _classesStatus;
   LoadStatus get checkInsStatus => _checkInsStatus;
   String? get errorMessage => _errorMessage;
@@ -145,10 +149,29 @@ class ClassProvider extends ChangeNotifier {
     _currentCheckIns = [];
   }
 
+  /// Subscribes to the stream of class IDs where [memberId] is checked in.
+  /// Called when the user signs in; pass the `user:{uid}` memberId format.
+  void watchMyCheckIns(String memberId) {
+    _myCheckInsSub?.cancel();
+    _myCheckInsSub = _service.watchUserCheckInClassIds(memberId).listen((ids) {
+      _myJoinedClassIds = ids;
+      notifyListeners();
+    });
+  }
+
+  /// Cancels the personal check-in stream (called on sign-out).
+  void stopWatchingMyCheckIns() {
+    _myCheckInsSub?.cancel();
+    _myCheckInsSub = null;
+    _myJoinedClassIds = {};
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _classesSub?.cancel();
     _checkInsSub?.cancel();
+    _myCheckInsSub?.cancel();
     super.dispose();
   }
 }
