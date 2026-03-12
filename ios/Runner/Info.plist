@@ -66,5 +66,19 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Required for google_sign_in on iOS.
+	     REVERSED_CLIENT_ID = reverse of the iOS OAuth client ID registered in Firebase Console.
+	     Source: google-services.json → oauth_client[type=2] → client_id reversed. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.21896097619-tmd4ccctf4ubtgj9o98e68t37p6qcf1t</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

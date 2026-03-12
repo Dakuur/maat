@@ -53,6 +53,7 @@ abstract final class AppRouter {
       case success:
         final args = settings.arguments as Map<String, dynamic>;
         final fc = args['fitnessClass'] as FitnessClass;
+        final isSelf = args['isSelf'] as bool? ?? false;
         // Accept either the new List<CheckedInPerson> format or the legacy
         // single-member format so existing callers don't break.
         final people = args['people'] as List<CheckedInPerson>? ??
@@ -63,7 +64,7 @@ abstract final class AppRouter {
               )
             ];
         return _scaleRoute(
-          SuccessScreen(people: people, fitnessClass: fc),
+          SuccessScreen(people: people, fitnessClass: fc, isSelf: isSelf),
           settings,
         );
 

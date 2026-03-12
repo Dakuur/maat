@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -423,13 +425,47 @@ class _PersonalJoinSection extends StatelessWidget {
                 horizontal: AppConstants.pagePadding, vertical: 2),
               child: OutlinedButton.icon(
                 onPressed: () async {
-                  try {
-                    await FirebaseService.instance.selfCheckIn(
-                      uid: user.uid,
-                      displayName: user.displayName,
-                      photoUrl: user.photoUrl,
-                      classId: fitnessClass.id,
+                  // Capacity check — same dialog as the kiosk confirm screen.
+                  final cp = context.read<ClassProvider>();
+                  final liveCount = cp.isLoadingCheckIns
+                      ? fitnessClass.attendeeCount
+                      : cp.currentCheckIns.length;
+                  if (liveCount >= fitnessClass.maxCapacity) {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        backgroundColor: AppColors.surface,
+                        title: const Text('Class is full'),
+                        content: Text(
+                          'Are you sure you want to join this class? '
+                          'It will exceed the limit of ${fitnessClass.maxCapacity} students.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(true),
+                            style: TextButton.styleFrom(
+                                foregroundColor: AppColors.warning),
+                            child: const Text('Yes, join anyway'),
+                          ),
+                        ],
+                      ),
                     );
+                    if (ok != true || !context.mounted) return;
+                  }
+
+                  try {
+                    await FirebaseService.instance
+                        .selfCheckIn(
+                          uid: user.uid,
+                          displayName: user.displayName,
+                          photoUrl: user.photoUrl,
+                          classId: fitnessClass.id,
+                        )
+                        .timeout(const Duration(seconds: 10));
                     if (context.mounted) {
                       Navigator.of(context).pushNamedAndRemoveUntil(
                         AppRouter.success,
@@ -442,11 +478,40 @@ class _PersonalJoinSection extends StatelessWidget {
                             ),
                           ],
                           'fitnessClass': fitnessClass,
+                          'isSelf': true,
                         },
                       );
                     }
                   } on AlreadyCheckedInException {
                     // already in — stream updates automatically
+                  } on TimeoutException {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text(
+                              'Transaction taking too long. Check your connection.'),
+                          backgroundColor: AppColors.error,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                          margin: const EdgeInsets.all(16),
+                        ),
+                      );
+                    }
+                  } catch (_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text(
+                              'Could not update. No internet connection.'),
+                          backgroundColor: AppColors.error,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                          margin: const EdgeInsets.all(16),
+                        ),
+                      );
+                    }
                   }
                 },
                 icon: const Icon(Icons.add_circle_outline_rounded, size: 18),

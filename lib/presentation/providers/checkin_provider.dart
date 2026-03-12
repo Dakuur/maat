@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../data/models/fitness_class.dart';
@@ -7,7 +10,7 @@ import '../../data/services/firebase_service.dart';
 export '../../data/services/firebase_service.dart' show BulkCheckInResult;
 
 /// Represents the result of a check-in submission attempt.
-enum CheckInState { idle, loading, success, error, alreadyCheckedIn }
+enum CheckInState { idle, loading, success, error, alreadyCheckedIn, timeout, networkError }
 
 /// Manages the member search list and the check-in submission flow.
 ///
@@ -103,15 +106,28 @@ class CheckInProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _service.checkInMember(
-        memberId: _selectedMember!.id,
-        classId: _selectedClass!.id,
-        memberName: _selectedMember!.fullName,
-        memberProfilePicture: _selectedMember!.profilePicture,
-      );
+      await _service
+          .checkInMember(
+            memberId: _selectedMember!.id,
+            classId: _selectedClass!.id,
+            memberName: _selectedMember!.fullName,
+            memberProfilePicture: _selectedMember!.profilePicture,
+          )
+          .timeout(const Duration(seconds: 10));
       _state = CheckInState.success;
     } on AlreadyCheckedInException {
       _state = CheckInState.alreadyCheckedIn;
+    } on TimeoutException {
+      _state = CheckInState.timeout;
+      _errorMessage = 'Transaction taking too long. Check your connection.';
+    } on FirebaseException catch (e) {
+      if (e.code == 'unavailable' || e.code == 'network-request-failed') {
+        _state = CheckInState.networkError;
+        _errorMessage = 'Could not update. No internet connection.';
+      } else {
+        _state = CheckInState.error;
+        _errorMessage = e.message ?? 'An error occurred.';
+      }
     } catch (e) {
       _state = CheckInState.error;
       _errorMessage = e.toString();

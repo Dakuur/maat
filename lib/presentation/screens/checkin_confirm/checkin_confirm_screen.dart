@@ -37,14 +37,27 @@ class _CheckInConfirmScreenState extends State<CheckInConfirmScreen> {
 
   void _onStateChanged() {
     if (!mounted) return;
-    final state = context.read<CheckInProvider>().state;
-    if (state == CheckInState.success) {
+    final provider = context.read<CheckInProvider>();
+    if (provider.state == CheckInState.success) {
       Navigator.of(context).pushReplacementNamed(
         AppRouter.success,
         arguments: {
           'member': widget.member,
           'fitnessClass': widget.fitnessClass,
+          'isSelf': false,
         },
+      );
+    } else if (provider.state == CheckInState.networkError) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              provider.errorMessage ?? 'Could not update. No internet connection.'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.all(16),
+        ),
       );
     }
   }
@@ -62,7 +75,7 @@ class _CheckInConfirmScreenState extends State<CheckInConfirmScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Clase completa'),
+        title: const Text('Class is full'),
         content: Text(
           'Are you sure you want to enroll ${widget.member.firstName} in this class? '
           'It will exceed the limit of $maxCapacity students.',
@@ -227,7 +240,8 @@ class _CheckInConfirmScreenState extends State<CheckInConfirmScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
-              if (provider.state == CheckInState.error) ...[
+              if (provider.state == CheckInState.error ||
+                  provider.state == CheckInState.timeout) ...[
                 _Banner(
                   color: AppColors.error,
                   icon: Icons.error_outline_rounded,
@@ -244,7 +258,6 @@ class _CheckInConfirmScreenState extends State<CheckInConfirmScreen> {
                 onPressed: provider.state == CheckInState.loading
                     ? null
                     : () async {
-                        // Warn if the class is already at or over capacity.
                         if (fc.isFull) {
                           final ok =
                               await _confirmOverCapacity(fc.maxCapacity);

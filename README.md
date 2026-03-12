@@ -2,6 +2,201 @@
 
 Touch-first gym check-in kiosk for Android. Members tap their class, find their name, confirm attendance — the whole flow takes under 5 seconds.
 
+## Tested Platforms
+
+| Platform | Status |
+|----------|--------|
+| Android (physical device) | Tested |
+| Chrome (Flutter Web) | Tested |
+| iOS | Not tested — no device available |
+
+## Contact
+
+For any questions contact the author: **David Morillo** — davidmormas@gmail.com · +34 722 112 127
+
+---
+
+---
+
+## Prerequisites
+
+Install these tools before doing anything else.
+
+| Tool | Required version | Download |
+|------|-----------------|---------|
+| **Flutter SDK** | ≥ 3.3.0, < 4.0.0 (tested on 3.41.4) | https://docs.flutter.dev/get-started/install |
+| **Android Studio** | Any recent version | https://developer.android.com/studio |
+| **Android SDK** | API 34 (compileSdk), API 21 minimum | Android Studio → SDK Manager |
+| **Java (JDK)** | 17 | Bundled with Android Studio ≥ Hedgehog |
+| **Git** | Any | https://git-scm.com |
+
+> Android Studio also installs the Android SDK, ADB, and platform tools automatically. If you prefer VS Code, install the **Flutter** and **Dart** extensions.
+
+**Optional — only needed to seed the database:**
+
+| Tool | Required version |
+|------|-----------------|
+| Python | ≥ 3.9 |
+
+---
+
+## Getting Started
+
+### 1. Clone the repo
+
+```bash
+git clone <repo-url>
+cd maat
+```
+
+### 2. Install Flutter dependencies
+
+```bash
+flutter pub get
+```
+
+### 3. Verify your setup
+
+```bash
+flutter doctor
+```
+
+Fix any issues reported by `flutter doctor` before continuing (missing Android SDK, missing cmdline-tools, license agreements, etc.).
+
+### 4. Connect a device or start an emulator
+
+```bash
+# List connected devices
+flutter devices
+
+# Run on the connected device/emulator
+flutter run
+```
+
+The app targets Android only. If you want a specific device:
+
+```bash
+flutter run -d <device-id>
+```
+
+---
+
+## Font Setup
+
+The **Geist** variable font is already bundled in the repo at `assets/fonts/Geist-Variable.ttf` (165 KB) and registered in `pubspec.yaml`. **No extra steps are needed** — `flutter pub get` is sufficient.
+
+```yaml
+# pubspec.yaml (already configured)
+fonts:
+  - family: Geist
+    fonts:
+      - asset: assets/fonts/Geist-Variable.ttf
+```
+
+The `package.json` / `node_modules/` at the root are only there as the original source used to copy the TTF. You do not need Node.js to build or run the app.
+
+---
+
+## Credentials & Secrets — What Goes in the Repo
+
+**Short answer:** The repo already contains everything needed to build and run the app. You do not need to create or upload any extra credential file to compile the APK. The one thing each developer must do manually is register their debug keystore SHA-1 with Firebase to enable Google Sign-In.
+
+### What is already committed
+
+| File | What it contains | Needed for |
+|------|-----------------|-----------|
+| `.env` | Firebase project ID, Google Web Client ID, Calendar API key | App runtime |
+| `lib/firebase_options.dart` | Firebase platform config (API keys, app IDs) | Firebase initialization |
+| `android/app/google-services.json` | Firebase Android config | Android build (google-services plugin) |
+
+These files are listed in `.gitignore` (so they won't appear in `git status` as untracked) but were committed before the gitignore rule was added, so git continues to track them. Any collaborator who clones the repo gets them automatically.
+
+### What is NOT committed
+
+| File | Why it is excluded | How to get it |
+|------|-------------------|--------------|
+| `.env` | Contains API keys and OAuth secrets | Get it from the project owner |
+| `ios/Runner/GoogleService-Info.plist` | Firebase iOS config | Firebase Console → Project Settings → iOS app → Download |
+| `scripts/service-account.json` | Firebase admin key — full read/write access | Firebase Console → Service Accounts → Generate new key |
+
+`service-account.json` is only used by the Python seeding script. It is **not required to build or run the Flutter app**.
+
+### Android — SHA-1 requirement
+
+Google Sign-In on Android requires your debug keystore's SHA-1 fingerprint to be registered in Firebase Console. Without it the app builds fine but the Google Sign-In button fails silently.
+
+```bash
+# macOS / Linux
+keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android
+
+# Windows
+keytool -list -v -keystore "%USERPROFILE%\.android\debug.keystore" -alias androiddebugkey -storepass android -keypass android
+```
+
+Add the fingerprint in **Firebase Console → Project Settings → Android app → Add fingerprint**.
+
+> For a signed release build, register the SHA-1 of your release keystore as well.
+
+### iOS — no SHA-1, different requirements
+
+iOS does **not** use SHA-1. Google Sign-In on iOS uses a URL scheme (`REVERSED_CLIENT_ID`) that is already configured in `ios/Runner/Info.plist` in this repo — no extra Xcode step needed. What iOS does require that is not in the repo:
+
+1. **`.env`** — same file as Android, pass it directly to the colleague
+2. **`ios/Runner/GoogleService-Info.plist`** — download from Firebase Console → Project Settings → iOS app (bundle ID `com.maat.maatKiosk`) → Download `GoogleService-Info.plist` → place it at `ios/Runner/GoogleService-Info.plist`
+
+These two files are the only blockers for an iOS build.
+
+---
+
+## Running the Web Version
+
+```bash
+flutter run -d chrome
+```
+
+## Building the APK
+
+Pre-built APKs are available in the /builds folder for testing. To build your own, use these commands:
+
+```bash
+# Install dependencies (always run this after cloning or after pubspec changes)
+flutter pub get
+
+# Debug build — hot reload enabled, runs directly on device
+flutter run
+
+# Release APK — split by CPU architecture (smallest file, install only what you need)
+flutter build apk --release --split-per-abi
+
+# Single fat APK (larger, works on all architectures)
+flutter build apk --release
+
+# Android App Bundle for Google Play
+flutter build appbundle --release
+```
+
+### Install a specific APK on a device
+
+```bash
+# Check device architecture first
+adb shell getprop ro.product.cpu.abi
+# → arm64-v8a on almost all modern phones (2017+)
+
+# Install
+adb install build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+```
+
+### APK sizes (measured)
+
+| Build | Architecture | Size |
+|-------|-------------|------|
+| Debug APK | universal | ~57 MB — never distribute |
+| Release | arm64-v8a | **18.7 MB** — all modern phones |
+| Release | armeabi-v7a | 16.3 MB — older / 32-bit |
+| Release | x86_64 | 20.0 MB — emulators / Chromebooks |
+
+Size breakdown: Firebase SDK ~8 MB · Flutter engine ~5 MB · Dart code + assets (Geist font 165 KB + logos) < 0.5 MB.
+
 ---
 
 ## Features
@@ -25,23 +220,18 @@ Touch-first gym check-in kiosk for Android. Members tap their class, find their 
 - Joined classes show a **green border + "You're in" badge** on Home and Calendar
 
 ### Weekly Schedule Calendar
-- Calendar icon in the Home header opens a **Timeline view** (6:00–23:00, 80 px/hour)
+- Calendar icon in the Home header opens a **Timeline view** (dynamic start hour, 80 px/hour)
+- Timeline start adjusts automatically to the earliest class of the day — classes before 06:00 are never clipped
 - Navigate between days with `<` / `>` arrows, swipe left/right, or tap the label to jump to Today
 - Red current-time indicator on Today's view
 - Tap any class block to open its detail screen
 
 ### Google Calendar Sync
 - "Sync with Google" button fetches **±7 days** in a single API call (15-day window)
-- Sync data **persists** while the app is open — navigating away and back does not require re-syncing, only "Re-sync" does
-- **Conflict detection**: gym class overlaps a personal calendar event → orange warning icon + red-tinted block
-- **Joined takes priority**: if you're already enrolled in a conflicting class, it shows green (not red) — you're committed
+- Sync data **persists** while the app is open — navigating away and back does not require re-syncing
+- **Conflict detection**: gym class overlaps a personal calendar event → warning icon + red-tinted block
+- **Joined takes priority**: enrolled classes stay green even when conflicting
 - Sign-out clears the event cache
-
-### Offline-First
-Powered by Firestore's built-in local persistence:
-- Classes and check-in lists served from cache when offline
-- Writes queued locally and flushed automatically when connectivity resumes
-- Attendee list stream keeps emitting cached data during network loss
 
 ### Multi-Select & Bulk Operations
 - Long-press an attendee to enter multi-select mode
@@ -94,14 +284,15 @@ scripts/
 
 ## Firestore Collections
 
-| Collection   | Purpose |
-|-------------|---------|
-| `members`   | Gym member profiles (seeded by `scripts/seed.py`) |
-| `classes`   | Weekly schedule — Mon–Sat, seeded for N weeks |
+| Collection | Purpose |
+|-----------|---------|
+| `members` | Gym member profiles (seeded by `scripts/seed.py`) |
+| `classes` | Weekly schedule — Mon–Sat, seeded for N weeks |
 | `check_ins` | Individual check-in records (classId + memberId) |
-| `users`     | Authenticated staff accounts (displayName, email, photoUrl, trainingPlan) |
+| `users` | Authenticated staff accounts (displayName, email, photoUrl, trainingPlan) |
 
 ### Security Rules
+
 ```javascript
 rules_version = '2';
 service cloud.firestore {
@@ -125,7 +316,7 @@ All seeding is done via the Python script. The Flutter app contains no seeding l
 ```bash
 cd scripts
 pip install -r requirements.txt
-# Place service-account.json here (download from Firebase Console > Service Accounts)
+# Place service-account.json here (Firebase Console → Project Settings → Service Accounts)
 
 python seed.py                          # 30 members, 9 weeks, 2–8 check-ins/class
 python seed.py --members 50             # custom member count
@@ -150,67 +341,9 @@ python seed.py --dry-run                # preview without writing
 
 ---
 
-## Google APIs Setup
-
-### 1. Firebase / Google Sign-In
-1. Create Android app in Firebase Console — package `com.david.maat_kiosk`
-2. Add the debug SHA-1 under Project Settings → Android app → Add fingerprint
-3. Download `google-services.json` → `android/app/google-services.json`
-4. Enable **Google** under Firebase Console → Authentication → Sign-in method
-
-### 2. Google Calendar API
-```
-https://console.developers.google.com/apis/api/calendar-json.googleapis.com/overview?project=21896097619
-```
-
-### 3. `.env` file
-```dotenv
-FIREBASE_PROJECT_ID="maat-f5d20"
-GOOGLE_WEB_CLIENT_ID="21896097619-xxxx.apps.googleusercontent.com"
-```
-
----
-
-## Building & APK Size
-
-```bash
-flutter pub get
-
-# Development (hot reload)
-flutter run
-
-# Release APK — split by CPU architecture (install only the relevant one)
-flutter build apk --release --split-per-abi
-
-# Android App Bundle for Play Store (smallest download size)
-flutter build appbundle --release
-```
-
-### APK sizes (measured)
-
-| Build type | Size | Notes |
-|-----------|------|-------|
-| Debug APK | ~57 MB | Includes Dart VM + debug symbols — never distribute |
-| Release arm64-v8a | **18.7 MB** | All modern Android phones (2017+) |
-| Release armeabi-v7a | 16.3 MB | Older/32-bit devices |
-| Release x86_64 | 20.0 MB | Emulators / Chromebooks |
-
-The majority of the release size comes from the Firebase SDK (~8 MB) and the Flutter engine (~5 MB). The app's own code and assets (Geist font 165 KB + logos 17 KB) contribute under 0.5 MB.
-
-**To install the right APK on a device:**
-```bash
-# Check device architecture
-adb shell getprop ro.product.cpu.abi
-# → arm64-v8a on almost all modern phones
-
-adb install build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-```
-
----
-
 ## Route Transitions
 
-All routes use `PageRouteBuilder` with a solid white `ColoredBox` backing — no black flash:
+All routes use `PageRouteBuilder` with a solid `ColoredBox` backing — no black flash between screens:
 
 | Transition | Duration | Effect |
 |-----------|---------|--------|

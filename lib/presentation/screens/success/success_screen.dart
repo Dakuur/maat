@@ -30,10 +30,14 @@ class SuccessScreen extends StatefulWidget {
     super.key,
     required this.people,
     required this.fitnessClass,
+    this.isSelf = false,
   });
 
   final List<CheckedInPerson> people;
   final FitnessClass fitnessClass;
+  /// True when the logged-in user is checking in themselves.
+  /// Controls the headline: "You're in!" vs "Check-in completed".
+  final bool isSelf;
 
   @override
   State<SuccessScreen> createState() => _SuccessScreenState();
@@ -232,7 +236,7 @@ class _SuccessScreenState extends State<SuccessScreen>
                   FadeTransition(
                     opacity: _checkFade,
                     child: Text(
-                      "You're in!",
+                      widget.isSelf ? "You're in!" : 'Check-in completed',
                       style: theme.textTheme.displayLarge,
                       textAlign: TextAlign.center,
                     ),
