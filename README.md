@@ -1,6 +1,6 @@
 # MAAT Kiosk
 
-Touch-first gym check-in kiosk for Android. Members tap their class, find their name, confirm attendance — the whole flow takes under 5 seconds.
+Touch-first gym check-in kiosk for Android and Chrome, intended for iOS but not tested. Members tap their class, find their name, confirm attendance — the whole flow takes under 5 seconds.
 
 ## Tested Platforms
 
@@ -221,7 +221,6 @@ Size breakdown: Firebase SDK ~8 MB · Flutter engine ~5 MB · Dart code + assets
 
 ### Weekly Schedule Calendar
 - Calendar icon in the Home header opens a **Timeline view** (dynamic start hour, 80 px/hour)
-- Timeline start adjusts automatically to the earliest class of the day — classes before 06:00 are never clipped
 - Navigate between days with `<` / `>` arrows, swipe left/right, or tap the label to jump to Today
 - Red current-time indicator on Today's view
 - Tap any class block to open its detail screen
@@ -352,3 +351,16 @@ All routes use `PageRouteBuilder` with a solid `ColoredBox` backing — no black
 | Calendar day swipe | 300 ms | Slide + fade |
 | Success screen | 380 ms | Scale 0.94→1 + fade |
 | Success reverse | 260 ms | Scale + fade |
+
+## Tools used for the App:
+
+- PyCharm as IDE
+- Python for helpful scripts such as seed.py (not for production)
+- Google stack:
+ - Firebase as database
+ - Google Authentication as log-in/sign up methon
+ - Flutter for unified mobile + web integration
+ - Google Calendar as an example integration
+- AI:
+ - Google Gemini for investigation (great research tool and well-connected to the internet for documentation). Also used to explain front-end code and documentation help.
+ - Claude Code to write code (mostly font-end) and agentic use for testing and live bug fixing.
