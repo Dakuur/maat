@@ -340,27 +340,15 @@ python seed.py --dry-run                # preview without writing
 
 ---
 
-## Route Transitions
-
-All routes use `PageRouteBuilder` with a solid `ColoredBox` backing — no black flash between screens:
-
-| Transition | Duration | Effect |
-|-----------|---------|--------|
-| Standard push | 280 ms | Cross-fade |
-| Standard pop | 220 ms | Cross-fade |
-| Calendar day swipe | 300 ms | Slide + fade |
-| Success screen | 380 ms | Scale 0.94→1 + fade |
-| Success reverse | 260 ms | Scale + fade |
-
 ## Tools used for the App:
 
 - PyCharm as IDE
 - Python for helpful scripts such as seed.py (not for production)
 - Google stack:
- - Firebase as database
- - Google Authentication as log-in/sign up methon
- - Flutter for unified mobile + web integration
- - Google Calendar as an example integration
-- AI:
- - Google Gemini for investigation (great research tool and well-connected to the internet for documentation). Also used to explain front-end code and documentation help.
- - Claude Code to write code (mostly font-end) and agentic use for testing and live bug fixing.
+    - Firebase as database
+    - Google Authentication as log-in/sign up methon
+    - Flutter for unified mobile + web integration
+    - Google Calendar as an example integration
+- AI Tools:
+    - Google Gemini for investigation (great research tool and well-connected to the internet for documentation). Also used to explain front-end code and documentation help.
+    - Claude Code to write code (mostly font-end) and agentic use for testing and live bug fixing.
