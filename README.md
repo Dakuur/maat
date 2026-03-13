@@ -352,3 +352,11 @@ python seed.py --dry-run                # preview without writing
 - AI Tools:
     - Google Gemini for investigation (great research tool and well-connected to the internet for documentation). Also used to explain front-end code and documentation help.
     - Claude Code to write code (mostly font-end) and agentic use for testing and live bug fixing.
+
+## Future improvements
+
+- iOS Support
+- Network error handling -> notification when changes were not applied
+- More Login implementations apart from Google (Apple, Microsoft, e-mail...)
+- More languages in the app apart from english
+- Dark mode
